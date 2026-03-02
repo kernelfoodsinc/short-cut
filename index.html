@@ -238,6 +238,8 @@ let gameState = 'title';
 let currentRound = 0;
 let roundScores = [];
 let frameCount = 0;
+let lastTime = 0;
+let dt = 1 / 60; // delta time in seconds, default 60fps
 let playCount = 0;
 let sessionShowcaseShown = false;
 let shortCallShown = false;
@@ -288,6 +290,9 @@ let rewardButtons = [];
 let toastMessage = '';
 let toastTimer = 0;
 
+// Timeout auto-advance (frame-based)
+let timeoutAdvanceTimer = 0;
+
 // Daily Cut
 let dailyUnlocked = false;
 let dailyMode = false;
@@ -305,6 +310,13 @@ let refSource = '';
 
 // Button bounds
 const buttons = {};
+
+// Cached canvas rect for input coord translation
+let cachedRect = null;
+let cachedRectTime = 0;
+
+// Cached board offscreen canvas
+let boardCanvas = null;
 
 // ============================================
 // ANALYTICS
@@ -386,19 +398,28 @@ const Haptics = {
 const AudioSystem = {
     ctx: null,
     enabled: true,
+    noiseBuffer: null,
 
     init() {
         try {
             this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            // Pre-generate 1 second noise buffer
+            const bufSize = this.ctx.sampleRate;
+            this.noiseBuffer = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+            const d = this.noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufSize; i++) d[i] = Math.random() * 2 - 1;
         } catch(e) { this.enabled = false; }
     },
 
     resume() {
-        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
     },
 
-    playTone(freq, dur, type = 'square', vol = 0.3) {
+    playTone(freq, dur, type, vol) {
+        if (!type) type = 'square';
+        if (!vol) vol = 0.3;
         if (!this.enabled || !this.ctx) return;
+        this.resume();
         try {
             const osc = this.ctx.createOscillator();
             const gain = this.ctx.createGain();
@@ -410,18 +431,17 @@ const AudioSystem = {
             gain.connect(this.ctx.destination);
             osc.start(this.ctx.currentTime);
             osc.stop(this.ctx.currentTime + dur);
+            osc.onended = () => { osc.disconnect(); gain.disconnect(); };
         } catch(e) {}
     },
 
-    playNoise(dur, freqLow, freqHigh, vol = 0.2) {
-        if (!this.enabled || !this.ctx) return;
+    playNoise(dur, freqLow, freqHigh, vol) {
+        if (!vol) vol = 0.2;
+        if (!this.enabled || !this.ctx || !this.noiseBuffer) return;
+        this.resume();
         try {
-            const bufSize = Math.floor(this.ctx.sampleRate * dur);
-            const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
-            const d = buf.getChannelData(0);
-            for (let i = 0; i < bufSize; i++) d[i] = Math.random() * 2 - 1;
             const src = this.ctx.createBufferSource();
-            src.buffer = buf;
+            src.buffer = this.noiseBuffer;
             const bp = this.ctx.createBiquadFilter();
             bp.type = 'bandpass';
             bp.frequency.value = (freqLow + freqHigh) / 2;
@@ -432,7 +452,8 @@ const AudioSystem = {
             src.connect(bp);
             bp.connect(g);
             g.connect(this.ctx.destination);
-            src.start();
+            src.start(this.ctx.currentTime, 0, dur);
+            src.onended = () => { src.disconnect(); bp.disconnect(); g.disconnect(); };
         } catch(e) {}
     },
 
@@ -513,7 +534,7 @@ function lineSegmentIntersection(p1, p2, p3, p4) {
     if (Math.abs(denom) < 1e-10) return null;
     const ua = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
     const ub = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom;
-    if (ua < 0 || ua > 1 || ub < 0 || ub > 1) return null;
+    if (ua < -1e-6 || ua > 1 + 1e-6 || ub < -1e-6 || ub > 1 + 1e-6) return null;
     return { x: p1.x + ua * d1x, y: p1.y + ua * d1y, ua, ub };
 }
 
@@ -580,23 +601,12 @@ function polygonArea(verts) {
 
 function splitRectangleByLine(rect, entry, exit) {
     const corners = getRectCorners(rect);
-    const edges = getRectEdges(corners);
 
-    // Find which edges the entry/exit are on
-    let entryEdge = -1, exitEdge = -1;
-    for (let i = 0; i < edges.length; i++) {
-        const hit = lineSegmentIntersection(entry, exit, edges[i][0], edges[i][1]);
-        // Check if entry is on this edge
-        if (pointOnSegment(entry, edges[i][0], edges[i][1])) entryEdge = i;
-        if (pointOnSegment(exit, edges[i][0], edges[i][1])) exitEdge = i;
-    }
-    if (entryEdge === -1 || exitEdge === -1) {
-        // Fallback: use intersection edge indices
-        const hits = lineRectIntersection(entry, exit, rect);
-        if (!hits) return null;
-        entryEdge = hits[0].edgeIndex !== undefined ? hits[0].edgeIndex : 0;
-        exitEdge = hits[1].edgeIndex !== undefined ? hits[1].edgeIndex : 2;
-    }
+    // Use edgeIndex directly from lineRectIntersection hits
+    const entryEdge = entry.edgeIndex;
+    const exitEdge = exit.edgeIndex;
+
+    if (entryEdge === undefined || exitEdge === undefined || entryEdge === exitEdge) return null;
 
     // Build two polygons by walking corners
     const polyA = [{ x: entry.x, y: entry.y }];
@@ -619,14 +629,6 @@ function splitRectangleByLine(rect, entry, exit) {
     polyB.push({ x: entry.x, y: entry.y });
 
     return [polyA, polyB];
-}
-
-function pointOnSegment(p, a, b) {
-    const cross = (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
-    if (Math.abs(cross) > 5) return false;
-    const dot = (p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y);
-    const lenSq = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
-    return dot >= -1 && dot <= lenSq + 1;
 }
 
 function calculateCutScore(polyA, polyB) {
@@ -661,14 +663,15 @@ function drawTextOutline(text, x, y, size, fillColor, outlineColor, align = 'cen
     ctx.fillText(text, x, y);
 }
 
-function drawSandwich(sw, alpha = 1) {
+function drawSandwich(sw, sandwichIdx, alpha) {
+    if (alpha === undefined) alpha = 1;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(sw.x, sw.y);
     if (sw.rotation) ctx.rotate(sw.rotation * Math.PI / 180);
 
     const hw = sw.w / 2, hh = sw.h / 2;
-    const data = SANDWICHES[ROUND_CONFIG[currentRound >= ROUND_CONFIG.length ? 0 : currentRound].sandwichIdx];
+    const data = SANDWICHES[sandwichIdx];
 
     // Shadow
     ctx.fillStyle = 'rgba(0,0,0,0.3)';
@@ -995,7 +998,7 @@ function renderCutAnimation() {
         ctx.clip();
 
         // Draw the sandwich
-        drawSandwich(sw);
+        drawSandwich(sw, sandIdx);
 
         ctx.restore();
     }
@@ -1051,10 +1054,14 @@ function renderCutAnimation() {
 // ============================================
 
 function getCanvasCoords(clientX, clientY) {
-    const rect = canvas.getBoundingClientRect();
+    const now = performance.now();
+    if (!cachedRect || now - cachedRectTime > 250) {
+        cachedRect = canvas.getBoundingClientRect();
+        cachedRectTime = now;
+    }
     return {
-        x: (clientX - rect.left) / rect.width * GW,
-        y: (clientY - rect.top) / rect.height * GH
+        x: (clientX - cachedRect.left) / cachedRect.width * GW,
+        y: (clientY - cachedRect.top) / cachedRect.height * GH
     };
 }
 
@@ -1106,6 +1113,15 @@ function handlePointerDown(cx, cy) {
     }
 
     if (gameState === 'menu_show') {
+        // Check location link tap
+        if (buttons.locations) {
+            const b = buttons.locations;
+            if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
+                Analytics.locationLinkClick();
+                window.open('https://counterservice.com/locations', '_blank');
+                return;
+            }
+        }
         const elapsed = frameCount - menuShowTimer;
         if (elapsed < 30) Analytics.menuShowcaseSkip();
         advanceFromMenuShow();
@@ -1162,13 +1178,9 @@ function handlePointerUp(cx, cy) {
     const hits = lineRectIntersection(lineStart, lineEnd, sandwich);
 
     if (!hits) {
-        // Miss
+        // Miss — timer keeps running (no reset)
         showToast('MISS!');
         gameState = 'ready';
-        // Reset timer on miss
-        if (timerActive) {
-            timerRemaining = timerTotal;
-        }
         return;
     }
 
@@ -1438,9 +1450,13 @@ function dateSeed(dateStr) {
     return hash;
 }
 
+let _dailyConfigCache = null;
+let _dailyConfigDate = '';
 function getDailyConfig() {
     const today = new Date();
     const dateStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    if (_dailyConfigCache && _dailyConfigDate === dateStr) return _dailyConfigCache;
+    _dailyConfigDate = dateStr;
     const rng = mulberry32(dateSeed(dateStr));
 
     const sandwichIdx = Math.floor(rng() * SANDWICHES.length);
@@ -1451,7 +1467,8 @@ function getDailyConfig() {
     const driftSpeed = 0.5 + rng() * 0.5;
     const rotSpeed = 0.3 + rng() * 0.2;
 
-    return { dateStr, sandwichIdx, offsetX, rotation, timer, drift, driftSpeed, rotSpeed, roundIdx: sandwichIdx };
+    _dailyConfigCache = { dateStr, sandwichIdx, offsetX, rotation, timer, drift, driftSpeed, rotSpeed, roundIdx: sandwichIdx };
+    return _dailyConfigCache;
 }
 
 function loadDailyData() {
@@ -1500,6 +1517,9 @@ function getShareText() {
 }
 
 async function generateShareCard() {
+    // Wait for font to be loaded before drawing text
+    try { await document.fonts.ready; } catch(e) {}
+
     const c = document.createElement('canvas');
     c.width = 1080;
     c.height = 1350;
@@ -1596,6 +1616,7 @@ async function shareGame() {
 
     const shareText = getShareText();
 
+    // Attempt native share with image
     try {
         const blob = await generateShareCard();
         const file = new File([blob], 'short-cut-score.png', { type: 'image/png' });
@@ -1613,11 +1634,25 @@ async function shareGame() {
         }
     } catch(e) {
         if (e.name === 'AbortError') return;
+        // Fall through to clipboard on other errors
     }
 
-    // Clipboard fallback
+    // Clipboard fallback — use execCommand for iOS Safari compatibility
     try {
-        await navigator.clipboard.writeText(shareText);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(shareText);
+        } else {
+            // Fallback for iOS Safari where clipboard API may fail outside user gesture
+            const ta = document.createElement('textarea');
+            ta.value = shareText;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
         showToast('LINK COPIED!');
         Analytics.shareSuccess(avg, 'clipboard');
     } catch(e) {
@@ -1638,7 +1673,8 @@ async function saveScoreCard() {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        // Delay revoke for iOS Safari which needs the URL to persist briefly
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
         showToast('SAVED!');
     } catch(e) {
         showToast('SAVE FAILED');
@@ -1658,7 +1694,19 @@ function handleRewardTap(cx, cy) {
         const b = buttons.coupon;
         if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
             try {
-                navigator.clipboard.writeText(code);
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(code);
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = code;
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.focus();
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                }
                 showToast('COPIED!');
                 Analytics.couponCopy(code);
             } catch(e) {
@@ -1720,7 +1768,8 @@ function handleRewardTap(cx, cy) {
 // UPDATE LOOP
 // ============================================
 
-function update() {
+function update(deltaTime) {
+    dt = deltaTime;
     frameCount++;
     updateParticles();
 
@@ -1808,6 +1857,13 @@ function update() {
             break;
 
         case 'timeout':
+            if (timeoutAdvanceTimer > 0) {
+                timeoutAdvanceTimer -= dt;
+                if (timeoutAdvanceTimer <= 0) {
+                    timeoutAdvanceTimer = 0;
+                    advanceToNextRound();
+                }
+            }
             break;
 
         case 'daily_result':
@@ -1818,8 +1874,9 @@ function update() {
 function updateDrift() {
     if (driftVX === 0 && driftVR === 0) return;
 
-    sandwich.x += driftVX;
-    sandwich.rotation += driftVR;
+    const dtScale = dt * 60; // normalize to 60fps baseline
+    sandwich.x += driftVX * dtScale;
+    sandwich.rotation += driftVR * dtScale;
 
     // Bounce off edges
     const hw = sandwich.w / 2 + 10;
@@ -1832,7 +1889,7 @@ function updateDrift() {
 
 function updateTimer() {
     if (!timerActive || timerRemaining <= 0) return;
-    timerRemaining -= 1 / 60;
+    timerRemaining -= dt;
 
     // Tick sound
     if (timerRemaining <= timerTotal && timerRemaining > 0) {
@@ -1851,12 +1908,7 @@ function updateTimer() {
         AudioSystem.timerBuzz();
         gameState = 'timeout';
         scoreDisplay = { score: 0, label: "TIME'S UP!", subtitle: '', color: COLORS.baronRed, timer: 90 };
-        // Auto-advance from timeout
-        setTimeout(() => {
-            if (gameState === 'timeout') {
-                advanceToNextRound();
-            }
-        }, 1500);
+        timeoutAdvanceTimer = 1.5; // seconds, frame-based
     }
 }
 
@@ -1899,10 +1951,9 @@ function render() {
         const alpha = toastTimer > 20 ? 1 : toastTimer / 20;
         ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = 'rgba(0,0,0,0.8)';
-        const tw = ctx.measureText(toastMessage).width || 100;
         ctx.font = '12px "Press Start 2P", cursive';
         const mw = ctx.measureText(toastMessage).width + 30;
+        ctx.fillStyle = 'rgba(0,0,0,0.8)';
         ctx.fillRect(GW / 2 - mw / 2, GH - 70, mw, 30);
         drawText(toastMessage, GW / 2, GH - 55, 12, COLORS.csYellow);
         ctx.restore();
@@ -1966,11 +2017,7 @@ function drawSandwichPreview(x, y) {
 
     // Simple sandwich
     const sw = { x: 0, y: 0, w: 140, h: 52, rotation: 0, visible: true };
-    // Use a temporary round setting
-    const origRound = currentRound;
-    currentRound = 0;
-    drawSandwich(sw, 1);
-    currentRound = origRound;
+    drawSandwich(sw, ROUND_CONFIG[0].sandwichIdx);
 
     ctx.restore();
 }
@@ -2019,29 +2066,32 @@ function renderIntro() {
         const ease = 1 - Math.pow(1 - sandwichEntranceProgress, 3);
         const slideX = GW + 100 - (GW + 100 - sandwich.x) * ease;
         const tempSw = { ...sandwich, x: slideX };
-        const origRound = currentRound;
-        if (dailyMode) currentRound = dailyConfig.sandwichIdx;
-        drawSandwich(tempSw);
-        currentRound = origRound;
+        const sandIdx = dailyMode ? dailyConfig.sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
+        drawSandwich(tempSw, sandIdx);
     }
 }
 
 function renderBoard() {
-    // Cutting board background
-    ctx.fillStyle = '#2A1A0E';
-    ctx.fillRect(40, 160, GW - 80, GH - 240);
-    ctx.fillStyle = '#3A2A1A';
-    ctx.fillRect(44, 164, GW - 88, GH - 248);
-
-    // Wood grain lines
-    ctx.strokeStyle = 'rgba(90,60,30,0.3)';
-    ctx.lineWidth = 1;
-    for (let y = 170; y < GH - 90; y += 12) {
-        ctx.beginPath();
-        ctx.moveTo(48, y);
-        ctx.lineTo(GW - 48, y);
-        ctx.stroke();
+    // Use cached offscreen canvas for the cutting board
+    if (!boardCanvas) {
+        boardCanvas = document.createElement('canvas');
+        boardCanvas.width = GW;
+        boardCanvas.height = GH;
+        const bx = boardCanvas.getContext('2d');
+        bx.fillStyle = '#2A1A0E';
+        bx.fillRect(40, 160, GW - 80, GH - 240);
+        bx.fillStyle = '#3A2A1A';
+        bx.fillRect(44, 164, GW - 88, GH - 248);
+        bx.strokeStyle = 'rgba(90,60,30,0.3)';
+        bx.lineWidth = 1;
+        for (let y = 170; y < GH - 90; y += 12) {
+            bx.beginPath();
+            bx.moveTo(48, y);
+            bx.lineTo(GW - 48, y);
+            bx.stroke();
+        }
     }
+    ctx.drawImage(boardCanvas, 0, 0);
 }
 
 function renderGame() {
@@ -2094,10 +2144,8 @@ function renderGame() {
 
     // Sandwich
     if (sandwich.visible) {
-        const origRound = currentRound;
-        if (dailyMode) currentRound = dailyConfig.sandwichIdx;
-        drawSandwich(sandwich);
-        currentRound = origRound;
+        const sandIdx = dailyMode ? dailyConfig.sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
+        drawSandwich(sandwich, sandIdx);
     }
 }
 
@@ -2270,10 +2318,7 @@ function renderMenuShow() {
     ctx.translate(GW / 2, 230);
     ctx.scale(1.5, 1.5);
     const tempSw = { x: 0, y: 0, w: 160, h: 64, rotation: 0, visible: true };
-    const origRound = currentRound;
-    currentRound = bestIdx;
-    drawSandwich(tempSw);
-    currentRound = origRound;
+    drawSandwich(tempSw, sandIdx);
     ctx.restore();
 
     // Info
@@ -2283,6 +2328,7 @@ function renderMenuShow() {
     drawText('Available at all CS locations', GW / 2, 385, 7, '#888');
     drawText('4 spots in NYC', GW / 2, 405, 7, '#888');
     drawText('counterservice.com/locations', GW / 2, 425, 6, '#6688AA');
+    buttons.locations = { x: 40, y: 415, w: GW - 80, h: 24 };
 
     // Tap to continue
     const flash = Math.sin(frameCount * 0.08) * 0.3 + 0.7;
@@ -2406,8 +2452,13 @@ function renderDailyResult() {
 // GAME LOOP
 // ============================================
 
-function gameLoop() {
-    update();
+function gameLoop(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    const rawDt = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+    // Clamp dt to prevent spiral of death on tab switches (max ~4 frames at 60fps)
+    const clampedDt = Math.min(rawDt, 1 / 15);
+    update(clampedDt);
     render();
     requestAnimationFrame(gameLoop);
 }
@@ -2421,7 +2472,13 @@ document.addEventListener('visibilitychange', () => {
         // Pause effect — we just don't decrement while hidden
         // (update() won't run while tab is hidden due to rAF)
     }
+    // Reset lastTime so we don't get a huge dt spike on resume
+    if (!document.hidden) lastTime = 0;
 });
+
+// Invalidate cached rect on resize/orientation change
+window.addEventListener('resize', () => { cachedRect = null; });
+window.addEventListener('orientationchange', () => { cachedRect = null; });
 
 // ============================================
 // INITIALIZATION
@@ -2454,7 +2511,7 @@ function init() {
         dailyUnlocked = localStorage.getItem('shortcut_daily_unlocked') === 'true';
     } catch(e) {}
 
-    gameLoop();
+    requestAnimationFrame(gameLoop);
 }
 
 init();
