@@ -1,0 +1,2463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Short Cut — Counter Service</title>
+
+    <meta name="description" content="Can you cut a sandwich perfectly in half? 5 sandwiches. 5 cuts. How precise are you?">
+    <meta name="theme-color" content="#1A1A2E">
+    <link rel="canonical" href="https://games.counterservice.com/short-cut/">
+    <link rel="icon" href="https://counterservice.com/favicon.ico">
+
+    <meta property="og:title" content="Short Cut — Counter Service">
+    <meta property="og:description" content="Can you cut a sandwich perfectly in half? 5 sandwiches. 5 cuts. How precise are you?">
+    <meta property="og:image" content="https://games.counterservice.com/short-cut/preview.png">
+    <meta property="og:url" content="https://games.counterservice.com/short-cut/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Counter Service">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Short Cut — Counter Service">
+    <meta name="twitter:description" content="Can you cut a sandwich perfectly in half? 5 sandwiches. 5 cuts. How precise are you?">
+    <meta name="twitter:image" content="https://games.counterservice.com/short-cut/preview.png">
+
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-E80K4DWDMT"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-E80K4DWDMT');
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            background: #000;
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            font-family: 'Press Start 2P', cursive;
+            overflow: hidden;
+            touch-action: none;
+            overscroll-behavior: none;
+            -webkit-overflow-scrolling: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+        #gameContainer {
+            position: relative;
+            width: 100%;
+            max-width: 480px;
+            aspect-ratio: 384 / 512;
+        }
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            border: 3px solid #F1ECBF;
+            border-radius: 4px;
+            cursor: crosshair;
+        }
+        @media (pointer: coarse) {
+            body { justify-content: flex-start; padding-top: 5px; }
+            #gameContainer {
+                width: 100%;
+                max-width: 100vw;
+                max-height: calc(100vh - 40px);
+                max-height: calc(100dvh - 40px);
+            }
+            #gameCanvas { border-width: 2px; cursor: none; }
+        }
+        @media (pointer: fine) {
+            body { justify-content: center; align-items: center; }
+            #gameContainer { max-width: 480px; }
+        }
+        #rotateMessage {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #000;
+            color: #F1ECBF;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 12px;
+            text-align: center;
+            z-index: 9999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+        #rotateMessage span { font-size: 48px; }
+        @media (pointer: coarse) and (orientation: landscape) {
+            #rotateMessage { display: flex; }
+            #gameContainer { display: none !important; }
+        }
+        #legalFooter {
+            position: fixed;
+            bottom: 8px; left: 0; right: 0;
+            text-align: center;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 10px;
+            color: #666;
+            z-index: 10;
+        }
+        #legalFooter a { color: #888; text-decoration: none; margin: 0 8px; }
+        #legalFooter a:hover { color: #F1ECBF; }
+    </style>
+</head>
+<body>
+    <div id="rotateMessage">
+        <span>📱</span>
+        <div>ROTATE YOUR</div>
+        <div>DEVICE TO PLAY</div>
+    </div>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="384" height="512"></canvas>
+    </div>
+
+    <div id="legalFooter">
+        <a href="https://counterservice.com/privacy/" target="_blank">Privacy</a>
+        <span>·</span>
+        <a href="https://counterservice.com/terms/" target="_blank">Terms</a>
+    </div>
+
+    <script>
+// ============================================
+// SHORT CUT — Counter Service Game #2
+// ============================================
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+const GW = 384;
+const GH = 512;
+
+const COLORS = {
+    bg: '#1A1A2E',
+    csYellow: '#F1ECBF',
+    baronRed: '#B74747',
+    offWhite: '#F5F5F5',
+    black: '#000000',
+    breadCrust: '#C4883C',
+    breadInside: '#E8D5A3',
+    cutLine: 'rgba(255,255,255,0.8)',
+    perfectGold: '#FFD700',
+    board: '#1A1A2E',
+    darkOutline: '#2A1A0A'
+};
+
+const GAME_URL = 'https://games.counterservice.com/short-cut/';
+
+// ============================================
+// SANDWICH DATA
+// ============================================
+
+const SANDWICHES = [
+    {
+        id: 'greenGoddess',
+        name: 'Green Goddess',
+        fullName: 'Green Goddess Chicken Club',
+        price: '$10.95 Short / $17.95 Full',
+        flavor: 'The fan favorite. No pressure.',
+        dominant: '#5B8C3A',
+        layers: ['#D4A54A','#5B8C3A','#D4B896','#8B3A2A','#7DB356','#9B3A5B','#E8D8A0','#3A6B2A','#E8C46A'],
+        crossColors: ['#E8C46A','#5B8C3A','#D4B896','#8B3A2A','#E8D8A0','#7DB356','#3A6B2A','#E8C46A']
+    },
+    {
+        id: 'smokeshow',
+        name: 'The Smokeshow',
+        fullName: 'The Smokeshow',
+        price: '$9.95 Short / $15.95 Full',
+        flavor: 'Jalape\u00f1os three ways. Handle with care.',
+        dominant: '#8B6A4A',
+        layers: ['#D4A54A','#6B4A3A','#F0E8D8','#5B8B3A','#C45A3A','#8B7A4A','#C4A44A','#6B3A5B','#E8C46A'],
+        crossColors: ['#E8C46A','#F0E8D8','#6B4A3A','#5B8B3A','#C45A3A','#8B7A4A','#6B3A5B','#E8C46A']
+    },
+    {
+        id: 'buffaloChicken',
+        name: 'Buffalo Chicken',
+        fullName: 'Buffalo Chicken',
+        price: '$9.95 Short / $15.95 Full',
+        flavor: 'Back from Not a Bowl. Now hold it steady.',
+        dominant: '#D47A3A',
+        layers: ['#D4A54A','#D47A3A','#F0EAE0','#E89A5A','#8BC46A','#D8D0C4','#E8A040','#6BA44A','#E8C46A'],
+        crossColors: ['#E8C46A','#D47A3A','#F0EAE0','#8BC46A','#D8D0C4','#E8A040','#6BA44A','#E8C46A']
+    },
+    {
+        id: 'baron',
+        name: 'The Baron',
+        fullName: 'The Baron',
+        price: '$11.95 Short / $19.95 Full',
+        flavor: 'The Baron demands respect. You have 3 seconds.',
+        dominant: '#D89898',
+        layers: ['#D4A54A','#D89898','#C47878','#F0EAE0','#C43A2A','#E8B0A8','#3A6B2A','#3A2A1A','#E8C46A'],
+        crossColors: ['#E8C46A','#D89898','#F0EAE0','#C43A2A','#D89898','#3A6B2A','#3A2A1A','#E8C46A']
+    },
+    {
+        id: 'chickenCaesar',
+        name: 'Chicken Caesar',
+        fullName: 'Chicken Caesar',
+        price: '$10.95 Short / $17.95 Full',
+        flavor: 'Our most-ordered Short. Moving target. Clock\'s ticking.',
+        dominant: '#C4A46A',
+        layers: ['#D4A54A','#C4A46A','#7BC35A','#E8D8A0','#E8E0C8','#A88A4A','#5BA43A','#D8BA80','#E8C46A'],
+        crossColors: ['#E8C46A','#C4A46A','#7BC35A','#E8D8A0','#E8E0C8','#5BA43A','#D8BA80','#E8C46A']
+    }
+];
+
+// ============================================
+// ROUND CONFIGS
+// ============================================
+
+const ROUND_CONFIG = [
+    { sandwichIdx: 0, offsetX: 0, rotation: 0, timer: 0, drift: false },
+    { sandwichIdx: 1, offsetRange: [-50, 50], rotation: 0, timer: 0, drift: false },
+    { sandwichIdx: 2, offsetX: 0, rotationRange: [15, 20], timer: 0, drift: false },
+    { sandwichIdx: 3, offsetX: 0, rotation: 0, timer: 3.0, drift: false },
+    { sandwichIdx: 4, offsetX: 0, rotation: 0, timer: 2.5, drift: true,
+      driftSpeed: 0.7, rotSpeed: 0.4 }
+];
+
+// ============================================
+// GAME STATE
+// ============================================
+
+let gameState = 'title';
+let currentRound = 0;
+let roundScores = [];
+let frameCount = 0;
+let playCount = 0;
+let sessionShowcaseShown = false;
+let shortCallShown = false;
+
+// Streak
+let streak = 0;
+let streakFlashTimer = 0;
+
+// Per-round
+let sandwich = { x: 0, y: 0, w: 160, h: 64, rotation: 0, visible: false };
+let sandwichEntranceProgress = 0;
+let timerRemaining = 0;
+let timerTotal = 0;
+let timerActive = false;
+
+// Drift for round 5
+let driftVX = 0;
+let driftVR = 0;
+let driftDir = 1;
+let driftRotDir = 1;
+
+// Swipe state
+let swipe = { active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 };
+let cutParticles = [];
+
+// Cut animation
+let cutAnim = null;
+
+// Score display
+let scoreDisplay = { score: 0, label: '', subtitle: '', color: '#FFF', timer: 0 };
+
+// Intro state
+let introTimer = 0;
+
+// Results state
+let resultsAnimProgress = 0;
+let resultsPhase = 0;
+let resultsTimer = 0;
+let worstRound = 0;
+
+// Menu showcase
+let menuShowTimer = 0;
+
+// Reward state
+let rewardButtons = [];
+
+// Toast
+let toastMessage = '';
+let toastTimer = 0;
+
+// Daily Cut
+let dailyUnlocked = false;
+let dailyMode = false;
+let dailyAttempts = 0;
+let dailyBestScore = 0;
+let dailyScores = [];
+let dailyConfig = null;
+
+// Particles
+let particles = [];
+
+// Player ID for referral
+let playerId = '';
+let refSource = '';
+
+// Button bounds
+const buttons = {};
+
+// ============================================
+// ANALYTICS
+// ============================================
+
+const Analytics = {
+    track(event, params = {}) {
+        if (typeof gtag === 'function') {
+            gtag('event', event, { game_name: 'short_cut', ...params });
+        }
+    },
+    gameStart(mode) {
+        this.track('game_start', { mode, ref_source: refSource });
+    },
+    roundComplete(roundNum, sandwichName, accuracy, label) {
+        this.track('round_complete', { round_number: roundNum, sandwich_name: sandwichName, accuracy: Math.round(accuracy * 10) / 10, cut_label: label });
+    },
+    roundTimeout(roundNum, sandwichName) {
+        this.track('round_timeout', { round_number: roundNum, sandwich_name: sandwichName });
+    },
+    gameComplete(finalScore, rankTitle, couponTier, mode) {
+        this.track('game_complete', { final_score: Math.round(finalScore * 10) / 10, rank_title: rankTitle, coupon_tier: couponTier, mode });
+    },
+    shareClick(finalScore, method) {
+        this.track('share_click', { final_score: Math.round(finalScore * 10) / 10, share_method: method });
+    },
+    shareSuccess(finalScore, method) {
+        this.track('share_success', { final_score: Math.round(finalScore * 10) / 10, share_method: method });
+    },
+    saveImage(finalScore) {
+        this.track('save_image', { final_score: Math.round(finalScore * 10) / 10 });
+    },
+    couponReveal(code, rank) {
+        this.track('coupon_reveal', { coupon_code: code, rank_title: rank });
+    },
+    couponCopy(code) {
+        this.track('coupon_copy', { coupon_code: code });
+    },
+    menuShowcaseView(sw) {
+        this.track('menu_showcase_view', { featured_sandwich: sw });
+    },
+    menuShowcaseSkip() {
+        this.track('menu_showcase_skip');
+    },
+    playAgain(prevScore, mode) {
+        this.track('play_again', { previous_score: Math.round(prevScore * 10) / 10, mode });
+    },
+    dailyCutStart(sw, config) {
+        this.track('daily_cut_start', { daily_sandwich: sw, daily_config: config });
+    },
+    orderLinkClick(tier) {
+        this.track('order_link_click', { coupon_tier: tier });
+    },
+    locationLinkClick() {
+        this.track('location_link_click');
+    },
+    referralArrival(ref) {
+        this.track('referral_arrival', { ref_source: ref });
+    }
+};
+
+// ============================================
+// HAPTICS
+// ============================================
+
+const Haptics = {
+    vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch(e) {} },
+    swipeStart() { this.vibrate(4); },
+    cut() { this.vibrate(10); },
+    perfect() { this.vibrate([8, 40, 8]); },
+    timerTick() { this.vibrate(3); },
+    results() { this.vibrate(6); }
+};
+
+// ============================================
+// AUDIO SYSTEM
+// ============================================
+
+const AudioSystem = {
+    ctx: null,
+    enabled: true,
+
+    init() {
+        try {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch(e) { this.enabled = false; }
+    },
+
+    resume() {
+        if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+    },
+
+    playTone(freq, dur, type = 'square', vol = 0.3) {
+        if (!this.enabled || !this.ctx) return;
+        try {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = type;
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(this.ctx.currentTime);
+            osc.stop(this.ctx.currentTime + dur);
+        } catch(e) {}
+    },
+
+    playNoise(dur, freqLow, freqHigh, vol = 0.2) {
+        if (!this.enabled || !this.ctx) return;
+        try {
+            const bufSize = Math.floor(this.ctx.sampleRate * dur);
+            const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let i = 0; i < bufSize; i++) d[i] = Math.random() * 2 - 1;
+            const src = this.ctx.createBufferSource();
+            src.buffer = buf;
+            const bp = this.ctx.createBiquadFilter();
+            bp.type = 'bandpass';
+            bp.frequency.value = (freqLow + freqHigh) / 2;
+            bp.Q.value = 1;
+            const g = this.ctx.createGain();
+            g.gain.setValueAtTime(vol, this.ctx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
+            src.connect(bp);
+            bp.connect(g);
+            g.connect(this.ctx.destination);
+            src.start();
+        } catch(e) {}
+    },
+
+    sliceShhk() {
+        this.playNoise(0.1, 2000, 4000, 0.35);
+    },
+
+    halvesThud() {
+        this.playTone(100, 0.2, 'sine', 0.3);
+    },
+
+    timerTick(urgency) {
+        const freq = 400 + urgency * 400;
+        this.playTone(freq, 0.05, 'square', 0.15);
+    },
+
+    scorePerfect() {
+        [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => this.playTone(f, 0.15, 'square', 0.3), i * 80));
+    },
+
+    scoreNice() {
+        this.playTone(523, 0.15, 'square', 0.25);
+        setTimeout(() => this.playTone(659, 0.15, 'square', 0.25), 100);
+    },
+
+    scoreOk() {
+        this.playTone(440, 0.2, 'triangle', 0.2);
+    },
+
+    scoreOof() {
+        this.playTone(220, 0.3, 'sawtooth', 0.2);
+        setTimeout(() => this.playTone(180, 0.4, 'sawtooth', 0.15), 150);
+    },
+
+    sandwichEntrance() {
+        this.playNoise(0.15, 300, 1200, 0.1);
+    },
+
+    rankFanfare() {
+        [262, 330, 392, 523].forEach((f, i) => setTimeout(() => this.playTone(f, 0.25, 'square', 0.25), i * 100));
+    },
+
+    uiSelect() {
+        this.playTone(660, 0.08, 'square', 0.15);
+    },
+
+    timerBuzz() {
+        this.playNoise(0.2, 200, 600, 0.3);
+    },
+
+    streakFire() {
+        this.playNoise(0.1, 1000, 3000, 0.15);
+        setTimeout(() => this.playTone(880, 0.1, 'square', 0.2), 50);
+        setTimeout(() => this.playTone(1100, 0.1, 'square', 0.2), 100);
+    }
+};
+
+// ============================================
+// GEOMETRY ENGINE
+// ============================================
+
+function rotatePoint(px, py, cx, cy, angle) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const dx = px - cx;
+    const dy = py - cy;
+    return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+}
+
+function unrotatePoint(px, py, cx, cy, angle) {
+    return rotatePoint(px, py, cx, cy, -angle);
+}
+
+function lineSegmentIntersection(p1, p2, p3, p4) {
+    const d1x = p2.x - p1.x, d1y = p2.y - p1.y;
+    const d2x = p4.x - p3.x, d2y = p4.y - p3.y;
+    const denom = d1x * d2y - d1y * d2x;
+    if (Math.abs(denom) < 1e-10) return null;
+    const ua = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
+    const ub = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom;
+    if (ua < 0 || ua > 1 || ub < 0 || ub > 1) return null;
+    return { x: p1.x + ua * d1x, y: p1.y + ua * d1y, ua, ub };
+}
+
+function getRectCorners(rect) {
+    const hw = rect.w / 2, hh = rect.h / 2;
+    const cx = rect.x, cy = rect.y;
+    const corners = [
+        { x: cx - hw, y: cy - hh },
+        { x: cx + hw, y: cy - hh },
+        { x: cx + hw, y: cy + hh },
+        { x: cx - hw, y: cy + hh }
+    ];
+    if (rect.rotation) {
+        return corners.map(c => rotatePoint(c.x, c.y, cx, cy, rect.rotation * Math.PI / 180));
+    }
+    return corners;
+}
+
+function getRectEdges(corners) {
+    return [
+        [corners[0], corners[1]],
+        [corners[1], corners[2]],
+        [corners[2], corners[3]],
+        [corners[3], corners[0]]
+    ];
+}
+
+function lineRectIntersection(lineStart, lineEnd, rect) {
+    const corners = getRectCorners(rect);
+    const edges = getRectEdges(corners);
+    const hits = [];
+    for (let i = 0; i < edges.length; i++) {
+        const hit = lineSegmentIntersection(lineStart, lineEnd, edges[i][0], edges[i][1]);
+        if (hit) {
+            hit.edgeIndex = i;
+            hits.push(hit);
+        }
+    }
+    // Deduplicate very close hits (corner hits)
+    const unique = [];
+    for (const h of hits) {
+        let isDup = false;
+        for (const u of unique) {
+            if (Math.abs(h.x - u.x) < 1 && Math.abs(h.y - u.y) < 1) { isDup = true; break; }
+        }
+        if (!isDup) unique.push(h);
+    }
+    // Sort by parameter along cut line
+    unique.sort((a, b) => a.ua - b.ua);
+    if (unique.length >= 2) return [unique[0], unique[unique.length - 1]];
+    return null;
+}
+
+function polygonArea(verts) {
+    let area = 0;
+    const n = verts.length;
+    for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        area += verts[i].x * verts[j].y;
+        area -= verts[j].x * verts[i].y;
+    }
+    return Math.abs(area) / 2;
+}
+
+function splitRectangleByLine(rect, entry, exit) {
+    const corners = getRectCorners(rect);
+    const edges = getRectEdges(corners);
+
+    // Find which edges the entry/exit are on
+    let entryEdge = -1, exitEdge = -1;
+    for (let i = 0; i < edges.length; i++) {
+        const hit = lineSegmentIntersection(entry, exit, edges[i][0], edges[i][1]);
+        // Check if entry is on this edge
+        if (pointOnSegment(entry, edges[i][0], edges[i][1])) entryEdge = i;
+        if (pointOnSegment(exit, edges[i][0], edges[i][1])) exitEdge = i;
+    }
+    if (entryEdge === -1 || exitEdge === -1) {
+        // Fallback: use intersection edge indices
+        const hits = lineRectIntersection(entry, exit, rect);
+        if (!hits) return null;
+        entryEdge = hits[0].edgeIndex !== undefined ? hits[0].edgeIndex : 0;
+        exitEdge = hits[1].edgeIndex !== undefined ? hits[1].edgeIndex : 2;
+    }
+
+    // Build two polygons by walking corners
+    const polyA = [{ x: entry.x, y: entry.y }];
+    const polyB = [{ x: exit.x, y: exit.y }];
+
+    // Walk from entry edge end to exit edge start (polygon A)
+    let i = (entryEdge + 1) % 4;
+    while (i !== (exitEdge + 1) % 4) {
+        polyA.push({ x: corners[i].x, y: corners[i].y });
+        i = (i + 1) % 4;
+    }
+    polyA.push({ x: exit.x, y: exit.y });
+
+    // Walk from exit edge end to entry edge start (polygon B)
+    i = (exitEdge + 1) % 4;
+    while (i !== (entryEdge + 1) % 4) {
+        polyB.push({ x: corners[i].x, y: corners[i].y });
+        i = (i + 1) % 4;
+    }
+    polyB.push({ x: entry.x, y: entry.y });
+
+    return [polyA, polyB];
+}
+
+function pointOnSegment(p, a, b) {
+    const cross = (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
+    if (Math.abs(cross) > 5) return false;
+    const dot = (p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y);
+    const lenSq = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+    return dot >= -1 && dot <= lenSq + 1;
+}
+
+function calculateCutScore(polyA, polyB) {
+    const areaA = polygonArea(polyA);
+    const areaB = polygonArea(polyB);
+    const total = areaA + areaB;
+    if (total < 1) return 0;
+    const smaller = Math.min(areaA, areaB);
+    return Math.min((smaller / total) * 2 * 100, 100);
+}
+
+// ============================================
+// DRAWING HELPERS
+// ============================================
+
+function drawText(text, x, y, size, color, align = 'center', baseline = 'middle') {
+    ctx.font = `${size}px 'Press Start 2P', cursive`;
+    ctx.fillStyle = color;
+    ctx.textAlign = align;
+    ctx.textBaseline = baseline;
+    ctx.fillText(text, x, y);
+}
+
+function drawTextOutline(text, x, y, size, fillColor, outlineColor, align = 'center') {
+    ctx.font = `${size}px 'Press Start 2P', cursive`;
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    ctx.strokeStyle = outlineColor;
+    ctx.lineWidth = 3;
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = fillColor;
+    ctx.fillText(text, x, y);
+}
+
+function drawSandwich(sw, alpha = 1) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(sw.x, sw.y);
+    if (sw.rotation) ctx.rotate(sw.rotation * Math.PI / 180);
+
+    const hw = sw.w / 2, hh = sw.h / 2;
+    const data = SANDWICHES[ROUND_CONFIG[currentRound >= ROUND_CONFIG.length ? 0 : currentRound].sandwichIdx];
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    drawRoundedRect(-hw + 4, -hh + 4, sw.w, sw.h, 12);
+
+    // Bottom crust
+    ctx.fillStyle = '#A67C3D';
+    drawRoundedRect(-hw, -hh, sw.w, sw.h, 12);
+
+    // Main bread body
+    ctx.fillStyle = '#D4A54A';
+    drawRoundedRect(-hw + 2, -hh + 2, sw.w - 4, sw.h - 4, 10);
+
+    // Top highlight
+    ctx.fillStyle = '#E8C46A';
+    drawRoundedRect(-hw + 4, -hh + 4, sw.w - 8, sw.h * 0.4, 8);
+
+    // Score marks on top crust
+    ctx.strokeStyle = '#A67C3D';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+        const sx = -hw + 20 + i * (sw.w - 40) / 3;
+        ctx.beginPath();
+        ctx.moveTo(sx - 8, -hh + 8);
+        ctx.lineTo(sx + 8, -hh + 18);
+        ctx.stroke();
+    }
+
+    // Filling layers visible at ends
+    const layers = data.layers;
+    const layerH = (sw.h - 24) / layers.length;
+    for (let i = 0; i < layers.length; i++) {
+        ctx.fillStyle = layers[i];
+        // Left end
+        ctx.fillRect(-hw + 3, -hh + 12 + i * layerH, 14, layerH + 1);
+        // Right end
+        ctx.fillRect(hw - 17, -hh + 12 + i * layerH, 14, layerH + 1);
+    }
+
+    // Paper wrap at bottom
+    ctx.fillStyle = '#F0EAE0';
+    ctx.fillRect(-hw + 8, hh - 12, sw.w - 16, 10);
+    ctx.fillStyle = '#E0D4C0';
+    ctx.fillRect(-hw + 8, hh - 12, sw.w - 16, 2);
+
+    // Dark outline
+    ctx.strokeStyle = COLORS.darkOutline;
+    ctx.lineWidth = 1.5;
+    drawRoundedRect(-hw, -hh, sw.w, sw.h, 12, true);
+
+    ctx.restore();
+}
+
+function drawRoundedRect(x, y, w, h, r, strokeOnly) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+    if (strokeOnly) ctx.stroke();
+    else ctx.fill();
+}
+
+function drawCrossSection(x, y, w, h, sandwichIdx) {
+    const data = SANDWICHES[sandwichIdx];
+    const colors = data.crossColors;
+    const layerH = h / colors.length;
+
+    ctx.save();
+    // Oval clip
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Outer crust ring
+    ctx.fillStyle = '#D4A54A';
+    ctx.fillRect(x, y, w, h);
+
+    // Inner area
+    const inset = 4;
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2, y + h / 2, w / 2 - inset, h / 2 - inset, 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    for (let i = 0; i < colors.length; i++) {
+        ctx.fillStyle = colors[i];
+        const ly = y + inset + i * ((h - inset * 2) / colors.length);
+        const lh = (h - inset * 2) / colors.length + 1;
+        ctx.fillRect(x, ly, w, lh);
+        // Add slight texture
+        if (i > 0 && i < colors.length - 1) {
+            ctx.fillStyle = 'rgba(0,0,0,0.08)';
+            ctx.fillRect(x, ly, w, 1);
+        }
+    }
+
+    ctx.restore();
+
+    // Outline
+    ctx.strokeStyle = COLORS.darkOutline;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+}
+
+// ============================================
+// PARTICLE SYSTEM
+// ============================================
+
+function spawnCrumbs(x, y, count, colors) {
+    for (let i = 0; i < count && particles.length < 50; i++) {
+        particles.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 3,
+            vy: -Math.random() * 2,
+            size: 1 + Math.random() * 2,
+            color: colors[Math.floor(Math.random() * colors.length)],
+            life: 40 + Math.random() * 30,
+            gravity: 0.12
+        });
+    }
+}
+
+function spawnSparkles(x, y, count) {
+    for (let i = 0; i < count && particles.length < 50; i++) {
+        particles.push({
+            x, y,
+            vx: (Math.random() - 0.5) * 4,
+            vy: (Math.random() - 0.5) * 4,
+            size: 1 + Math.random(),
+            color: COLORS.perfectGold,
+            life: 20 + Math.random() * 20,
+            gravity: 0,
+            sparkle: true
+        });
+    }
+}
+
+function updateParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += p.gravity || 0;
+        p.life--;
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+}
+
+function renderParticles() {
+    for (const p of particles) {
+        const alpha = Math.min(1, p.life / 15);
+        ctx.globalAlpha = alpha;
+        if (p.sparkle && frameCount % 4 < 2) {
+            ctx.fillStyle = '#FFF';
+        } else {
+            ctx.fillStyle = p.color;
+        }
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), Math.round(p.size), Math.round(p.size));
+    }
+    ctx.globalAlpha = 1;
+}
+
+// ============================================
+// CUT ANIMATION
+// ============================================
+
+function startCutAnimation(entry, exit, polyA, polyB, score) {
+    const sandwichIdx = dailyMode ? dailyConfig.sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
+    const data = SANDWICHES[sandwichIdx];
+
+    // Determine perpendicular direction for separation
+    const dx = exit.x - entry.x;
+    const dy = exit.y - entry.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const perpX = -dy / len;
+    const perpY = dx / len;
+
+    // Determine which poly is on which side
+    const midAx = polyA.reduce((s, v) => s + v.x, 0) / polyA.length;
+    const midAy = polyA.reduce((s, v) => s + v.y, 0) / polyA.length;
+    const side = (midAx - entry.x) * perpX + (midAy - entry.y) * perpY;
+
+    const dirA = side > 0 ? 1 : -1;
+
+    cutAnim = {
+        frame: 0,
+        totalFrames: 36,
+        entry: { ...entry },
+        exit: { ...exit },
+        polyA, polyB,
+        perpX, perpY,
+        dirA,
+        score,
+        sandwichIdx,
+        sandwichState: { ...sandwich },
+        flashAlpha: 1,
+        separation: 0,
+        rotA: 0, rotB: 0,
+        driftY: 0,
+        crossSectionWidth: 0
+    };
+
+    // Spawn crumbs along cut line
+    const crumbColors = [COLORS.breadCrust, COLORS.breadInside, data.dominant, '#E8C46A'];
+    for (let t = 0; t <= 1; t += 0.15) {
+        const cx = entry.x + (exit.x - entry.x) * t;
+        const cy = entry.y + (exit.y - entry.y) * t;
+        spawnCrumbs(cx, cy, 3, crumbColors);
+    }
+
+    AudioSystem.sliceShhk();
+    Haptics.cut();
+}
+
+function updateCutAnimation() {
+    if (!cutAnim) return;
+    cutAnim.frame++;
+    const f = cutAnim.frame;
+    const t = cutAnim.totalFrames;
+
+    if (f <= 12) {
+        // Freeze + flash
+        cutAnim.flashAlpha = 1 - (f / 12);
+    } else {
+        // Separation phase
+        const sepProgress = (f - 12) / (t - 12);
+        const ease = 1 - Math.pow(1 - sepProgress, 3);
+        cutAnim.separation = ease * 30;
+        cutAnim.rotA = ease * 4;
+        cutAnim.rotB = ease * -3;
+        cutAnim.driftY = ease * 10;
+        cutAnim.crossSectionWidth = ease * 8;
+
+        if (f === 18) {
+            AudioSystem.halvesThud();
+        }
+    }
+
+    if (f >= t) {
+        // Animation done, show score
+        const score = cutAnim.score;
+        let label, color, subtitle = '';
+
+        if (score >= 98) {
+            label = 'PERFECT!';
+            color = COLORS.perfectGold;
+            AudioSystem.scorePerfect();
+            Haptics.perfect();
+            spawnSparkles(GW / 2, GH / 2 - 20, 20);
+        } else if (score >= 90) {
+            label = 'NICE!';
+            color = COLORS.offWhite;
+            AudioSystem.scoreNice();
+        } else if (score >= 80) {
+            label = 'OK';
+            color = '#888';
+            AudioSystem.scoreOk();
+            subtitle = 'So close to NICE...';
+        } else {
+            label = 'OOOF';
+            color = COLORS.baronRed;
+            AudioSystem.scoreOof();
+            subtitle = 'Try a steadier swipe';
+        }
+
+        // Streak
+        if (score >= 90) {
+            streak++;
+            if (streak === 3) {
+                streakFlashTimer = 60;
+                AudioSystem.streakFire();
+            }
+            if (streak >= 2) streakFlashTimer = Math.max(streakFlashTimer, 30);
+        } else {
+            streak = 0;
+        }
+
+        scoreDisplay = { score, label, subtitle, color, timer: 90 };
+        Analytics.roundComplete(currentRound + 1, SANDWICHES[ROUND_CONFIG[currentRound].sandwichIdx].name, score, label);
+
+        roundScores.push(score);
+
+        gameState = 'animating_score';
+    }
+}
+
+function renderCutAnimation() {
+    if (!cutAnim) return;
+    const ca = cutAnim;
+    const sw = ca.sandwichState;
+    const sandIdx = ca.sandwichIdx;
+
+    // Draw each half with clipping
+    for (let half = 0; half < 2; half++) {
+        const poly = half === 0 ? ca.polyA : ca.polyB;
+        const dir = half === 0 ? ca.dirA : -ca.dirA;
+        const rot = half === 0 ? ca.rotA : ca.rotB;
+        const offsetX = ca.perpX * ca.separation * dir;
+        const offsetY = ca.perpY * ca.separation * dir + ca.driftY * (half === 0 ? 0.5 : 1);
+
+        ctx.save();
+        ctx.translate(offsetX, offsetY);
+
+        // Rotate around centroid of polygon
+        const centX = poly.reduce((s, v) => s + v.x, 0) / poly.length;
+        const centY = poly.reduce((s, v) => s + v.y, 0) / poly.length;
+        ctx.translate(centX, centY);
+        ctx.rotate(rot * Math.PI / 180);
+        ctx.translate(-centX, -centY);
+
+        // Clip to this half
+        ctx.beginPath();
+        ctx.moveTo(poly[0].x, poly[0].y);
+        for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+        ctx.closePath();
+        ctx.clip();
+
+        // Draw the sandwich
+        drawSandwich(sw);
+
+        ctx.restore();
+    }
+
+    // Draw cross-section between halves
+    if (ca.crossSectionWidth > 0) {
+        const midX = (ca.entry.x + ca.exit.x) / 2;
+        const midY = (ca.entry.y + ca.exit.y) / 2;
+        const csW = ca.crossSectionWidth * 3;
+        const csH = Math.sqrt((ca.exit.x - ca.entry.x) ** 2 + (ca.exit.y - ca.entry.y) ** 2);
+        const angle = Math.atan2(ca.exit.y - ca.entry.y, ca.exit.x - ca.entry.x);
+
+        ctx.save();
+        ctx.translate(midX, midY);
+        ctx.rotate(angle);
+
+        // Draw cross-section layers
+        const colors = SANDWICHES[sandIdx].crossColors;
+        const layerW = csW / 1;
+        const layerH = csH / colors.length;
+        for (let i = 0; i < colors.length; i++) {
+            ctx.fillStyle = colors[i];
+            ctx.fillRect(-csW / 2, -csH / 2 + i * layerH, csW, layerH + 1);
+        }
+
+        // Outline
+        ctx.strokeStyle = COLORS.darkOutline;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-csW / 2, -csH / 2, csW, csH);
+
+        ctx.restore();
+    }
+
+    // Cut line flash
+    if (ca.flashAlpha > 0) {
+        ctx.save();
+        ctx.globalAlpha = ca.flashAlpha;
+        ctx.strokeStyle = '#FFF';
+        ctx.lineWidth = 3;
+        ctx.shadowColor = '#FFF';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(ca.entry.x, ca.exit.y > ca.entry.y ? ca.entry.y - 20 : ca.entry.y + 20);
+        ctx.lineTo(ca.entry.x, ca.entry.y);
+        ctx.lineTo(ca.exit.x, ca.exit.y);
+        ctx.stroke();
+        ctx.restore();
+    }
+}
+
+// ============================================
+// INPUT SYSTEM
+// ============================================
+
+function getCanvasCoords(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: (clientX - rect.left) / rect.width * GW,
+        y: (clientY - rect.top) / rect.height * GH
+    };
+}
+
+function handlePointerDown(cx, cy) {
+    AudioSystem.resume();
+
+    if (gameState === 'title') {
+        // Check daily cut button
+        if (dailyUnlocked && buttons.daily) {
+            const b = buttons.daily;
+            if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
+                startDailyCut();
+                AudioSystem.uiSelect();
+                return;
+            }
+        }
+        startMainGame();
+        return;
+    }
+
+    if (gameState === 'intro') return;
+
+    if (gameState === 'ready' || gameState === 'cutting') {
+        swipe.active = true;
+        swipe.startX = cx;
+        swipe.startY = cy;
+        swipe.currentX = cx;
+        swipe.currentY = cy;
+        cutParticles = [];
+        Haptics.swipeStart();
+        gameState = 'cutting';
+        return;
+    }
+
+    if (gameState === 'short_call') {
+        currentRound++;
+        gameState = 'intro';
+        introTimer = 0;
+        AudioSystem.uiSelect();
+        return;
+    }
+
+    if (gameState === 'animating_score') return;
+
+    if (gameState === 'results') {
+        // Tap to advance faster
+        if (resultsPhase >= 2) advanceFromResults();
+        return;
+    }
+
+    if (gameState === 'menu_show') {
+        const elapsed = frameCount - menuShowTimer;
+        if (elapsed < 30) Analytics.menuShowcaseSkip();
+        advanceFromMenuShow();
+        return;
+    }
+
+    if (gameState === 'reward') {
+        handleRewardTap(cx, cy);
+        return;
+    }
+
+    if (gameState === 'timeout') return;
+
+    if (gameState === 'daily_result') {
+        gameState = 'title';
+        return;
+    }
+}
+
+function handlePointerMove(cx, cy) {
+    if (!swipe.active) return;
+    swipe.currentX = cx;
+    swipe.currentY = cy;
+
+    // Spawn trail particles
+    if (cutParticles.length < 15) {
+        cutParticles.push({
+            x: cx, y: cy,
+            life: 10 + Math.random() * 5,
+            size: 1 + Math.random()
+        });
+    }
+}
+
+function handlePointerUp(cx, cy) {
+    if (!swipe.active) return;
+    swipe.active = false;
+    swipe.currentX = cx;
+    swipe.currentY = cy;
+
+    if (gameState !== 'cutting') return;
+
+    // Check intersection with sandwich
+    const lineStart = { x: swipe.startX, y: swipe.startY };
+    const lineEnd = { x: swipe.currentX, y: swipe.currentY };
+
+    // Min swipe length
+    const swipeLen = Math.sqrt((lineEnd.x - lineStart.x) ** 2 + (lineEnd.y - lineStart.y) ** 2);
+    if (swipeLen < 20) {
+        gameState = 'ready';
+        return;
+    }
+
+    const hits = lineRectIntersection(lineStart, lineEnd, sandwich);
+
+    if (!hits) {
+        // Miss
+        showToast('MISS!');
+        gameState = 'ready';
+        // Reset timer on miss
+        if (timerActive) {
+            timerRemaining = timerTotal;
+        }
+        return;
+    }
+
+    const entry = hits[0];
+    const exit = hits[1];
+
+    const polys = splitRectangleByLine(sandwich, entry, exit);
+    if (!polys) {
+        showToast('MISS!');
+        gameState = 'ready';
+        return;
+    }
+
+    const score = calculateCutScore(polys[0], polys[1]);
+    timerActive = false;
+
+    startCutAnimation(entry, exit, polys[0], polys[1], score);
+    gameState = 'animating';
+}
+
+// Touch listeners
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const coords = getCanvasCoords(touch.clientX, touch.clientY);
+    handlePointerDown(coords.x, coords.y);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const coords = getCanvasCoords(touch.clientX, touch.clientY);
+    handlePointerMove(coords.x, coords.y);
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    const coords = getCanvasCoords(
+        e.changedTouches[0].clientX,
+        e.changedTouches[0].clientY
+    );
+    handlePointerUp(coords.x, coords.y);
+}, { passive: false });
+
+// Mouse listeners
+let mouseDown = false;
+canvas.addEventListener('mousedown', (e) => {
+    mouseDown = true;
+    const coords = getCanvasCoords(e.clientX, e.clientY);
+    handlePointerDown(coords.x, coords.y);
+});
+canvas.addEventListener('mousemove', (e) => {
+    if (!mouseDown) return;
+    const coords = getCanvasCoords(e.clientX, e.clientY);
+    handlePointerMove(coords.x, coords.y);
+});
+canvas.addEventListener('mouseup', (e) => {
+    mouseDown = false;
+    const coords = getCanvasCoords(e.clientX, e.clientY);
+    handlePointerUp(coords.x, coords.y);
+});
+
+// ============================================
+// GAME FLOW
+// ============================================
+
+function startMainGame() {
+    gameState = 'intro';
+    currentRound = 0;
+    roundScores = [];
+    streak = 0;
+    dailyMode = false;
+    playCount++;
+    introTimer = 0;
+    Analytics.gameStart('main');
+}
+
+function startDailyCut() {
+    const dc = getDailyConfig();
+
+    // Check attempt limit
+    let data = loadDailyData();
+    if (data && data.date === dc.dateStr && data.attempts >= 3) {
+        showToast('3 ATTEMPTS USED!');
+        return;
+    }
+
+    dailyConfig = dc;
+    dailyMode = true;
+    gameState = 'intro';
+    currentRound = dc.roundIdx;
+    roundScores = [];
+    introTimer = 0;
+    Analytics.dailyCutStart(SANDWICHES[dc.sandwichIdx].name, JSON.stringify(dc));
+    Analytics.gameStart('daily');
+}
+
+function setupRound() {
+    const config = dailyMode ? {
+        sandwichIdx: dailyConfig.sandwichIdx,
+        offsetX: dailyConfig.offsetX,
+        rotation: dailyConfig.rotation,
+        timer: dailyConfig.timer,
+        drift: dailyConfig.drift,
+        driftSpeed: dailyConfig.driftSpeed || 0.7,
+        rotSpeed: dailyConfig.rotSpeed || 0.4
+    } : ROUND_CONFIG[currentRound];
+
+    sandwich.w = 160;
+    sandwich.h = 64;
+    sandwich.y = GH / 2 - 20;
+    sandwich.visible = true;
+
+    // Position
+    if (config.offsetRange) {
+        const range = config.offsetRange;
+        sandwich.x = GW / 2 + range[0] + Math.random() * (range[1] - range[0]);
+    } else {
+        sandwich.x = GW / 2 + (config.offsetX || 0);
+    }
+
+    // Rotation
+    if (config.rotationRange) {
+        const dir = Math.random() < 0.5 ? -1 : 1;
+        sandwich.rotation = dir * (config.rotationRange[0] + Math.random() * (config.rotationRange[1] - config.rotationRange[0]));
+    } else {
+        sandwich.rotation = config.rotation || 0;
+    }
+
+    // Timer
+    if (config.timer > 0) {
+        timerTotal = config.timer;
+        timerRemaining = config.timer;
+        timerActive = true;
+    } else {
+        timerActive = false;
+        timerRemaining = 0;
+        timerTotal = 0;
+    }
+
+    // Drift
+    if (config.drift) {
+        driftVX = (config.driftSpeed || 0.7) * (Math.random() < 0.5 ? 1 : -1);
+        driftVR = (config.rotSpeed || 0.4) * (Math.random() < 0.5 ? 1 : -1);
+    } else {
+        driftVX = 0;
+        driftVR = 0;
+    }
+
+    sandwichEntranceProgress = 0;
+    cutAnim = null;
+    scoreDisplay.timer = 0;
+}
+
+function nextRoundOrEnd() {
+    if (dailyMode) {
+        return 'daily_result';
+    }
+    if (currentRound >= 4) {
+        return 'results';
+    }
+    return 'intro';
+}
+
+function advanceToNextRound() {
+    const next = nextRoundOrEnd();
+    if (next === 'intro') {
+        currentRound++;
+        gameState = 'intro';
+        introTimer = 0;
+    } else if (next === 'results') {
+        gameState = 'results';
+        resultsAnimProgress = 0;
+        resultsPhase = 0;
+        resultsTimer = 0;
+        worstRound = 0;
+        for (let i = 1; i < roundScores.length; i++) {
+            if (roundScores[i] < roundScores[worstRound]) worstRound = i;
+        }
+        const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+        const rank = getRankTitle(avg);
+        const { code } = getCouponInfo(avg);
+        Analytics.gameComplete(avg, rank, code, dailyMode ? 'daily' : 'main');
+    } else if (next === 'daily_result') {
+        gameState = 'daily_result';
+        const dc = getDailyConfig();
+        let data = loadDailyData();
+        if (!data || data.date !== dc.dateStr) {
+            data = { date: dc.dateStr, attempts: 0, bestScore: 0, scores: [] };
+        }
+        data.attempts++;
+        const score = roundScores[0];
+        data.scores.push(score);
+        if (score > data.bestScore) data.bestScore = score;
+        dailyAttempts = data.attempts;
+        dailyBestScore = data.bestScore;
+        saveDailyData(data);
+    }
+}
+
+function advanceFromResults() {
+    if (!sessionShowcaseShown && playCount <= 1) {
+        sessionShowcaseShown = true;
+        gameState = 'menu_show';
+        menuShowTimer = frameCount;
+        // Find best sandwich
+        let bestIdx = 0;
+        for (let i = 1; i < roundScores.length; i++) {
+            if (roundScores[i] > roundScores[bestIdx]) bestIdx = i;
+        }
+        buttons.bestSandwich = bestIdx;
+        Analytics.menuShowcaseView(SANDWICHES[ROUND_CONFIG[bestIdx].sandwichIdx].fullName);
+    } else {
+        gameState = 'reward';
+        setupRewardScreen();
+    }
+}
+
+function advanceFromMenuShow() {
+    gameState = 'reward';
+    setupRewardScreen();
+}
+
+function setupRewardScreen() {
+    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const { rank, code, desc } = getCouponInfo(avg);
+    Analytics.couponReveal(code, rank);
+
+    // Mark daily as unlocked
+    if (!dailyUnlocked) {
+        dailyUnlocked = true;
+        try { localStorage.setItem('shortcut_daily_unlocked', 'true'); } catch(e) {}
+    }
+}
+
+function getCouponInfo(avg) {
+    if (avg >= 95) return { rank: 'Sous Chef', code: 'SHORTCUT', desc: '$5 off $20 for you AND a friend' };
+    if (avg >= 90) return { rank: 'Line Cook', code: 'LINECUT', desc: '$3 off your next order ($12+)' };
+    return { rank: 'First Cut', code: 'FIRSTCUT', desc: 'Free cookie with any purchase' };
+}
+
+function getRankTitle(avg) {
+    if (avg >= 95) return 'SOUS CHEF';
+    if (avg >= 90) return 'LINE COOK';
+    return 'FIRST CUT';
+}
+
+// ============================================
+// DAILY CUT
+// ============================================
+
+function mulberry32(seed) {
+    return function() {
+        seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+        let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+}
+
+function dateSeed(dateStr) {
+    let hash = 0;
+    for (let i = 0; i < dateStr.length; i++) {
+        hash = ((hash << 5) - hash) + dateStr.charCodeAt(i);
+        hash |= 0;
+    }
+    return hash;
+}
+
+function getDailyConfig() {
+    const today = new Date();
+    const dateStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+    const rng = mulberry32(dateSeed(dateStr));
+
+    const sandwichIdx = Math.floor(rng() * SANDWICHES.length);
+    const offsetX = (rng() - 0.5) * 80;
+    const rotation = (rng() - 0.5) * 40;
+    const timer = rng() < 0.5 ? 0 : 2.5 + rng() * 1;
+    const drift = rng() < 0.3;
+    const driftSpeed = 0.5 + rng() * 0.5;
+    const rotSpeed = 0.3 + rng() * 0.2;
+
+    return { dateStr, sandwichIdx, offsetX, rotation, timer, drift, driftSpeed, rotSpeed, roundIdx: sandwichIdx };
+}
+
+function loadDailyData() {
+    try {
+        const raw = localStorage.getItem('shortcut_daily');
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch(e) { return null; }
+}
+
+function saveDailyData(data) {
+    try { localStorage.setItem('shortcut_daily', JSON.stringify(data)); } catch(e) {}
+}
+
+// ============================================
+// TOAST
+// ============================================
+
+function showToast(msg) {
+    toastMessage = msg;
+    toastTimer = 90;
+    AudioSystem.uiSelect();
+}
+
+// ============================================
+// SHARING SYSTEM
+// ============================================
+
+function getPlayerShareUrl() {
+    return GAME_URL + '?ref=' + playerId;
+}
+
+function getShareText() {
+    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const rank = getRankTitle(avg);
+    let text = '\u2702\uFE0F Short Cut \uD83E\uDD6A\n';
+    const names = ['Green Goddess', 'Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
+    for (let i = 0; i < roundScores.length; i++) {
+        const name = names[i].padEnd(16);
+        text += name + roundScores[i].toFixed(1) + '%\n';
+    }
+    text += '\u2500\u2500\u2500\u2500\u2500\n';
+    text += avg.toFixed(1) + '% \u00B7 ' + rank + '\n';
+    text += getPlayerShareUrl();
+    return text;
+}
+
+async function generateShareCard() {
+    const c = document.createElement('canvas');
+    c.width = 1080;
+    c.height = 1350;
+    const cx = c.getContext('2d');
+
+    // Background
+    cx.fillStyle = '#12121A';
+    cx.fillRect(0, 0, 1080, 1350);
+
+    // Border
+    cx.strokeStyle = COLORS.csYellow;
+    cx.lineWidth = 4;
+    cx.strokeRect(30, 30, 1020, 1290);
+
+    // Title
+    cx.font = '36px "Press Start 2P", cursive';
+    cx.fillStyle = COLORS.csYellow;
+    cx.textAlign = 'center';
+    cx.fillText('S H O R T  C U T', 540, 120);
+
+    cx.font = '16px "Press Start 2P", cursive';
+    cx.fillStyle = COLORS.offWhite;
+    cx.fillText('Counter Service', 540, 170);
+
+    // Score bars
+    const names = ['Green Goddess', 'Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
+    const barY = 250;
+    const barH = 50;
+    const barSpacing = 80;
+    const barMaxW = 600;
+    const barX = 140;
+
+    for (let i = 0; i < roundScores.length; i++) {
+        const y = barY + i * barSpacing;
+        const pct = roundScores[i] / 100;
+
+        // Background bar
+        cx.fillStyle = '#2A2A3E';
+        cx.fillRect(barX, y, barMaxW, barH);
+
+        // Filled bar
+        let barColor;
+        if (roundScores[i] >= 98) barColor = COLORS.perfectGold;
+        else if (roundScores[i] >= 90) barColor = '#4CAF50';
+        else if (roundScores[i] >= 80) barColor = '#FFA726';
+        else barColor = COLORS.baronRed;
+        cx.fillStyle = barColor;
+        cx.fillRect(barX, y, barMaxW * pct, barH);
+
+        // Score text
+        cx.font = '20px "Press Start 2P", cursive';
+        cx.fillStyle = COLORS.offWhite;
+        cx.textAlign = 'right';
+        cx.fillText(roundScores[i].toFixed(1) + '%', barX + barMaxW + 120, y + barH / 2 + 8);
+
+        // Name
+        cx.font = '14px "Press Start 2P", cursive';
+        cx.textAlign = 'left';
+        cx.fillStyle = '#AAA';
+        cx.fillText(names[i], barX, y - 10);
+    }
+
+    // Average + Rank
+    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const rank = getRankTitle(avg);
+
+    cx.textAlign = 'center';
+    cx.font = '14px "Press Start 2P", cursive';
+    cx.fillStyle = '#888';
+    cx.fillText('\u2702 AVERAGE \u2702', 540, barY + 5 * barSpacing + 20);
+
+    cx.font = '48px "Press Start 2P", cursive';
+    cx.fillStyle = COLORS.csYellow;
+    cx.fillText(avg.toFixed(1) + '%', 540, barY + 5 * barSpacing + 80);
+
+    cx.font = '28px "Press Start 2P", cursive';
+    cx.fillStyle = avg >= 95 ? COLORS.perfectGold : (avg >= 90 ? '#4CAF50' : COLORS.offWhite);
+    cx.fillText(rank, 540, barY + 5 * barSpacing + 130);
+
+    // URL
+    cx.font = '14px "Press Start 2P", cursive';
+    cx.fillStyle = '#666';
+    cx.fillText('games.counterservice.com', 540, 1230);
+    cx.fillText('/short-cut/?ref=' + playerId, 540, 1260);
+
+    return new Promise(resolve => {
+        c.toBlob(blob => resolve(blob), 'image/png');
+    });
+}
+
+async function shareGame() {
+    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    Analytics.shareClick(avg, 'native');
+
+    const shareText = getShareText();
+
+    try {
+        const blob = await generateShareCard();
+        const file = new File([blob], 'short-cut-score.png', { type: 'image/png' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                text: shareText,
+                url: getPlayerShareUrl()
+            });
+            showToast('SHARED!');
+            Analytics.shareSuccess(avg, 'native');
+            Haptics.results();
+            return;
+        }
+    } catch(e) {
+        if (e.name === 'AbortError') return;
+    }
+
+    // Clipboard fallback
+    try {
+        await navigator.clipboard.writeText(shareText);
+        showToast('LINK COPIED!');
+        Analytics.shareSuccess(avg, 'clipboard');
+    } catch(e) {
+        showToast('SHARE FAILED');
+    }
+}
+
+async function saveScoreCard() {
+    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    Analytics.saveImage(avg);
+
+    try {
+        const blob = await generateShareCard();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'short-cut-score.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('SAVED!');
+    } catch(e) {
+        showToast('SAVE FAILED');
+    }
+}
+
+// ============================================
+// REWARD SCREEN TAP HANDLER
+// ============================================
+
+function handleRewardTap(cx, cy) {
+    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const { code } = getCouponInfo(avg);
+
+    // Check coupon code tap area
+    if (buttons.coupon) {
+        const b = buttons.coupon;
+        if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
+            try {
+                navigator.clipboard.writeText(code);
+                showToast('COPIED!');
+                Analytics.couponCopy(code);
+            } catch(e) {
+                showToast(code);
+            }
+            return;
+        }
+    }
+
+    // Challenge button
+    if (buttons.challenge) {
+        const b = buttons.challenge;
+        if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
+            shareGame();
+            return;
+        }
+    }
+
+    // Save button
+    if (buttons.save) {
+        const b = buttons.save;
+        if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
+            saveScoreCard();
+            return;
+        }
+    }
+
+    // Play again button
+    if (buttons.playAgain) {
+        const b = buttons.playAgain;
+        if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
+            Analytics.playAgain(avg, dailyMode ? 'daily' : 'main');
+            gameState = 'title';
+            return;
+        }
+    }
+
+    // Daily cut button on reward screen
+    if (dailyUnlocked && buttons.dailyReward) {
+        const b = buttons.dailyReward;
+        if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
+            startDailyCut();
+            return;
+        }
+    }
+
+    // Order link
+    if (buttons.order) {
+        const b = buttons.order;
+        if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
+            Analytics.orderLinkClick(getCouponInfo(avg).code);
+            window.open('https://counterservice.com/order', '_blank');
+            return;
+        }
+    }
+}
+
+// ============================================
+// UPDATE LOOP
+// ============================================
+
+function update() {
+    frameCount++;
+    updateParticles();
+
+    if (toastTimer > 0) toastTimer--;
+    if (streakFlashTimer > 0) streakFlashTimer--;
+
+    switch (gameState) {
+        case 'title':
+            break;
+
+        case 'intro':
+            introTimer++;
+            if (introTimer === 1) {
+                setupRound();
+                AudioSystem.sandwichEntrance();
+            }
+            sandwichEntranceProgress = Math.min(1, introTimer / 40);
+            if (introTimer >= 90) {
+                gameState = 'ready';
+            }
+            break;
+
+        case 'ready':
+            updateDrift();
+            updateTimer();
+            break;
+
+        case 'cutting':
+            updateDrift();
+            updateTimer();
+            // Update trail particles
+            for (let i = cutParticles.length - 1; i >= 0; i--) {
+                cutParticles[i].life--;
+                if (cutParticles[i].life <= 0) cutParticles.splice(i, 1);
+            }
+            break;
+
+        case 'animating':
+            updateCutAnimation();
+            break;
+
+        case 'animating_score':
+            scoreDisplay.timer--;
+            if (scoreDisplay.timer <= 0) {
+                // Check for short call (after round 1, first play)
+                if (currentRound === 0 && !shortCallShown && playCount <= 1 && !dailyMode) {
+                    shortCallShown = true;
+                    try { localStorage.setItem('shortcut_short_call', 'true'); } catch(e) {}
+                    gameState = 'short_call';
+                } else {
+                    advanceToNextRound();
+                }
+            }
+            break;
+
+        case 'short_call':
+            break;
+
+        case 'results':
+            resultsTimer++;
+            // Phase 0: animating bars (300ms each = 18 frames)
+            if (resultsPhase === 0) {
+                resultsAnimProgress = Math.min(1, resultsTimer / (18 * roundScores.length + 30));
+                if (resultsTimer > 18 * roundScores.length + 60) resultsPhase = 1;
+            }
+            // Phase 1: count-up average
+            if (resultsPhase === 1) {
+                resultsAnimProgress = Math.min(1, (resultsTimer - 18 * roundScores.length - 60) / 40);
+                if (resultsAnimProgress >= 1) {
+                    resultsPhase = 2;
+                    AudioSystem.rankFanfare();
+                    Haptics.results();
+                }
+            }
+            // Phase 2: rank reveal, wait for tap or auto-advance
+            if (resultsPhase === 2 && resultsTimer > 18 * roundScores.length + 160) {
+                advanceFromResults();
+            }
+            break;
+
+        case 'menu_show':
+            break;
+
+        case 'reward':
+            break;
+
+        case 'timeout':
+            break;
+
+        case 'daily_result':
+            break;
+    }
+}
+
+function updateDrift() {
+    if (driftVX === 0 && driftVR === 0) return;
+
+    sandwich.x += driftVX;
+    sandwich.rotation += driftVR;
+
+    // Bounce off edges
+    const hw = sandwich.w / 2 + 10;
+    if (sandwich.x - hw < 0) { sandwich.x = hw; driftVX = Math.abs(driftVX); }
+    if (sandwich.x + hw > GW) { sandwich.x = GW - hw; driftVX = -Math.abs(driftVX); }
+
+    // Oscillate rotation
+    if (Math.abs(sandwich.rotation) > 25) driftVR = -driftVR;
+}
+
+function updateTimer() {
+    if (!timerActive || timerRemaining <= 0) return;
+    timerRemaining -= 1 / 60;
+
+    // Tick sound
+    if (timerRemaining <= timerTotal && timerRemaining > 0) {
+        const urgency = 1 - (timerRemaining / timerTotal);
+        if (frameCount % Math.max(6, Math.floor(20 * (1 - urgency))) === 0) {
+            AudioSystem.timerTick(urgency);
+            Haptics.timerTick();
+        }
+    }
+
+    if (timerRemaining <= 0) {
+        timerRemaining = 0;
+        timerActive = false;
+        roundScores.push(0);
+        Analytics.roundTimeout(currentRound + 1, SANDWICHES[ROUND_CONFIG[Math.min(currentRound, 4)].sandwichIdx].name);
+        AudioSystem.timerBuzz();
+        gameState = 'timeout';
+        scoreDisplay = { score: 0, label: "TIME'S UP!", subtitle: '', color: COLORS.baronRed, timer: 90 };
+        // Auto-advance from timeout
+        setTimeout(() => {
+            if (gameState === 'timeout') {
+                advanceToNextRound();
+            }
+        }, 1500);
+    }
+}
+
+// ============================================
+// RENDER LOOP
+// ============================================
+
+function render() {
+    // Clear
+    ctx.fillStyle = COLORS.bg;
+    ctx.fillRect(0, 0, GW, GH);
+
+    switch (gameState) {
+        case 'title': renderTitle(); break;
+        case 'intro': renderIntro(); break;
+        case 'ready': renderGame(); break;
+        case 'cutting': renderGame(); renderCutLine(); break;
+        case 'animating': renderAnimating(); break;
+        case 'animating_score': renderAnimating(); renderScoreDisplay(); break;
+        case 'short_call': renderShortCall(); break;
+        case 'results': renderResults(); break;
+        case 'menu_show': renderMenuShow(); break;
+        case 'reward': renderReward(); break;
+        case 'timeout': renderGame(); renderScoreDisplay(); break;
+        case 'daily_result': renderDailyResult(); break;
+    }
+
+    // Streak effects
+    if (streakFlashTimer > 0 && streak >= 3) {
+        ctx.save();
+        ctx.globalAlpha = (streakFlashTimer / 60) * 0.3;
+        ctx.strokeStyle = COLORS.perfectGold;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(4, 4, GW - 8, GH - 8);
+        ctx.restore();
+    }
+
+    // Toast
+    if (toastTimer > 0) {
+        const alpha = toastTimer > 20 ? 1 : toastTimer / 20;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+        const tw = ctx.measureText(toastMessage).width || 100;
+        ctx.font = '12px "Press Start 2P", cursive';
+        const mw = ctx.measureText(toastMessage).width + 30;
+        ctx.fillRect(GW / 2 - mw / 2, GH - 70, mw, 30);
+        drawText(toastMessage, GW / 2, GH - 55, 12, COLORS.csYellow);
+        ctx.restore();
+    }
+
+    renderParticles();
+}
+
+function renderTitle() {
+    // Background pattern - subtle grid
+    ctx.strokeStyle = 'rgba(241,236,191,0.05)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < GW; x += 32) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, GH); ctx.stroke();
+    }
+    for (let y = 0; y < GH; y += 32) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(GW, y); ctx.stroke();
+    }
+
+    // Title
+    drawTextOutline('SHORT', GW / 2, 140, 32, COLORS.csYellow, '#000');
+    drawTextOutline('CUT', GW / 2, 180, 32, COLORS.csYellow, '#000');
+
+    // Scissors icon
+    drawText('\u2702', GW / 2, 220, 20, COLORS.offWhite);
+
+    // Subtitle
+    drawText('Counter Service', GW / 2, 255, 10, '#888');
+
+    // Placeholder sandwich display
+    drawSandwichPreview(GW / 2, 330);
+
+    // Tap to play
+    const flash = Math.sin(frameCount * 0.08) * 0.3 + 0.7;
+    ctx.globalAlpha = flash;
+    drawText('TAP TO PLAY', GW / 2, 430, 12, COLORS.offWhite);
+    ctx.globalAlpha = 1;
+
+    // Daily cut button
+    if (dailyUnlocked) {
+        const bx = GW / 2 - 80, by = 460, bw = 160, bh = 30;
+        ctx.fillStyle = 'rgba(241,236,191,0.15)';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.strokeStyle = COLORS.csYellow;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx, by, bw, bh);
+        drawText('DAILY CUT', GW / 2, by + 15, 8, COLORS.csYellow);
+        buttons.daily = { x: bx, y: by, w: bw, h: bh };
+    }
+}
+
+function drawSandwichPreview(x, y) {
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Cutting board
+    ctx.fillStyle = '#3A2A1A';
+    drawRoundedRect(-100, -40, 200, 80, 8);
+    ctx.fillStyle = '#4A3A2A';
+    drawRoundedRect(-96, -36, 192, 72, 6);
+
+    // Simple sandwich
+    const sw = { x: 0, y: 0, w: 140, h: 52, rotation: 0, visible: true };
+    // Use a temporary round setting
+    const origRound = currentRound;
+    currentRound = 0;
+    drawSandwich(sw, 1);
+    currentRound = origRound;
+
+    ctx.restore();
+}
+
+function renderIntro() {
+    // Background
+    renderBoard();
+
+    const config = dailyMode ? dailyConfig : ROUND_CONFIG[currentRound];
+    const sandIdx = dailyMode ? dailyConfig.sandwichIdx : config.sandwichIdx;
+    const data = SANDWICHES[sandIdx];
+
+    // Round number
+    if (!dailyMode) {
+        drawText('ROUND ' + (currentRound + 1), GW / 2, 80, 16, COLORS.csYellow);
+    } else {
+        drawText('DAILY CUT', GW / 2, 80, 16, COLORS.csYellow);
+    }
+
+    // Sandwich name
+    drawText(data.name.toUpperCase(), GW / 2, 130, 14, COLORS.offWhite);
+
+    // Flavor text
+    ctx.font = '8px "Press Start 2P", cursive';
+    ctx.fillStyle = '#888';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Word wrap
+    const words = data.flavor.split(' ');
+    let line = '';
+    let lineY = 165;
+    for (const word of words) {
+        const test = line + (line ? ' ' : '') + word;
+        if (ctx.measureText(test).width > GW - 60) {
+            ctx.fillText(line, GW / 2, lineY);
+            line = word;
+            lineY += 16;
+        } else {
+            line = test;
+        }
+    }
+    if (line) ctx.fillText(line, GW / 2, lineY);
+
+    // Sandwich sliding in
+    if (sandwich.visible) {
+        const ease = 1 - Math.pow(1 - sandwichEntranceProgress, 3);
+        const slideX = GW + 100 - (GW + 100 - sandwich.x) * ease;
+        const tempSw = { ...sandwich, x: slideX };
+        const origRound = currentRound;
+        if (dailyMode) currentRound = dailyConfig.sandwichIdx;
+        drawSandwich(tempSw);
+        currentRound = origRound;
+    }
+}
+
+function renderBoard() {
+    // Cutting board background
+    ctx.fillStyle = '#2A1A0E';
+    ctx.fillRect(40, 160, GW - 80, GH - 240);
+    ctx.fillStyle = '#3A2A1A';
+    ctx.fillRect(44, 164, GW - 88, GH - 248);
+
+    // Wood grain lines
+    ctx.strokeStyle = 'rgba(90,60,30,0.3)';
+    ctx.lineWidth = 1;
+    for (let y = 170; y < GH - 90; y += 12) {
+        ctx.beginPath();
+        ctx.moveTo(48, y);
+        ctx.lineTo(GW - 48, y);
+        ctx.stroke();
+    }
+}
+
+function renderGame() {
+    renderBoard();
+
+    // HUD
+    if (!dailyMode) {
+        drawText('ROUND ' + (currentRound + 1) + '/5', GW / 2, 30, 10, COLORS.csYellow);
+    } else {
+        drawText('DAILY CUT', GW / 2, 30, 10, COLORS.csYellow);
+    }
+
+    // Timer bar
+    if (timerActive && timerRemaining > 0) {
+        const pct = timerRemaining / timerTotal;
+        const barW = GW - 100;
+        const barX = 50;
+        const barY = 50;
+
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barW, 8);
+
+        let timerColor;
+        if (pct > 0.5) timerColor = COLORS.offWhite;
+        else if (pct > 0.25) timerColor = COLORS.csYellow;
+        else timerColor = COLORS.baronRed;
+
+        ctx.fillStyle = timerColor;
+        ctx.fillRect(barX, barY, barW * pct, 8);
+
+        drawText(timerRemaining.toFixed(1) + 's', GW / 2, barY + 22, 8, timerColor);
+    }
+
+    // Streak
+    if (streak >= 2) {
+        ctx.save();
+        ctx.globalAlpha = 0.8;
+        if (streak >= 3) {
+            drawText('ON FIRE!', GW / 2, GH - 60, 10, COLORS.perfectGold);
+        }
+        // Streak dots
+        for (let i = 0; i < Math.min(streak, 5); i++) {
+            ctx.fillStyle = COLORS.perfectGold;
+            ctx.beginPath();
+            ctx.arc(GW / 2 - 30 + i * 15, GH - 40, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    // Sandwich
+    if (sandwich.visible) {
+        const origRound = currentRound;
+        if (dailyMode) currentRound = dailyConfig.sandwichIdx;
+        drawSandwich(sandwich);
+        currentRound = origRound;
+    }
+}
+
+function renderCutLine() {
+    if (!swipe.active) return;
+
+    // Cut line
+    ctx.save();
+    ctx.strokeStyle = COLORS.cutLine;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#FFF';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(swipe.startX, swipe.startY);
+    ctx.lineTo(swipe.currentX, swipe.currentY);
+    ctx.stroke();
+    ctx.restore();
+
+    // Trail sparkles
+    for (const p of cutParticles) {
+        const alpha = p.life / 15;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#FFF';
+        ctx.fillRect(p.x - 1, p.y - 1, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+}
+
+function renderAnimating() {
+    renderBoard();
+
+    // HUD
+    if (!dailyMode) {
+        drawText('ROUND ' + (currentRound + 1) + '/5', GW / 2, 30, 10, COLORS.csYellow);
+    } else {
+        drawText('DAILY CUT', GW / 2, 30, 10, COLORS.csYellow);
+    }
+
+    renderCutAnimation();
+}
+
+function renderScoreDisplay() {
+    if (scoreDisplay.timer <= 0) return;
+
+    const alpha = scoreDisplay.timer > 15 ? 1 : scoreDisplay.timer / 15;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Score
+    const scoreStr = scoreDisplay.score > 0 ? scoreDisplay.score.toFixed(1) + '%' : '0%';
+    drawTextOutline(scoreStr, GW / 2, GH / 2 - 80, 24, scoreDisplay.color, '#000');
+
+    // Label
+    drawTextOutline(scoreDisplay.label, GW / 2, GH / 2 - 45, 18, scoreDisplay.color, '#000');
+
+    // Subtitle
+    if (scoreDisplay.subtitle) {
+        drawText(scoreDisplay.subtitle, GW / 2, GH / 2 - 15, 8, '#AAA');
+    }
+
+    ctx.restore();
+}
+
+function renderShortCall() {
+    renderBoard();
+
+    // Dim overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, GW, GH);
+
+    // Message
+    drawText("That's a Short", GW / 2, GH / 2 - 40, 14, COLORS.csYellow);
+    drawText("our new half", GW / 2, GH / 2 - 10, 10, COLORS.offWhite);
+    drawText("sandwich.", GW / 2, GH / 2 + 10, 10, COLORS.offWhite);
+    drawText("Now do four more.", GW / 2, GH / 2 + 40, 10, COLORS.csYellow);
+
+    const flash = Math.sin(frameCount * 0.08) * 0.3 + 0.7;
+    ctx.globalAlpha = flash;
+    drawText('TAP TO CONTINUE', GW / 2, GH / 2 + 90, 8, '#888');
+    ctx.globalAlpha = 1;
+}
+
+function renderResults() {
+    ctx.fillStyle = '#12121A';
+    ctx.fillRect(0, 0, GW, GH);
+
+    // Title
+    drawText('S H O R T  C U T', GW / 2, 40, 14, COLORS.csYellow);
+    drawText('Counter Service', GW / 2, 65, 8, '#888');
+
+    // Score bars
+    const names = ['Green Goddess', 'Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
+    const barStartY = 100;
+    const barH = 20;
+    const barSpacing = 52;
+    const barMaxW = 220;
+    const barX = 80;
+
+    for (let i = 0; i < roundScores.length; i++) {
+        const y = barStartY + i * barSpacing;
+        const barProgress = Math.max(0, Math.min(1, (resultsTimer - i * 18) / 18));
+
+        if (barProgress <= 0) continue;
+
+        // Name
+        drawText(names[i], barX, y - 12, 7, '#AAA', 'left');
+
+        // Bar bg
+        ctx.fillStyle = '#2A2A3E';
+        ctx.fillRect(barX, y, barMaxW, barH);
+
+        // Bar fill
+        const pct = roundScores[i] / 100;
+        let barColor;
+        if (roundScores[i] >= 98) barColor = COLORS.perfectGold;
+        else if (roundScores[i] >= 90) barColor = '#4CAF50';
+        else if (roundScores[i] >= 80) barColor = '#FFA726';
+        else barColor = COLORS.baronRed;
+
+        ctx.fillStyle = barColor;
+        ctx.fillRect(barX, y, barMaxW * pct * barProgress, barH);
+
+        // Score text
+        if (barProgress >= 1) {
+            drawText(roundScores[i].toFixed(1) + '%', barX + barMaxW + 15, y + barH / 2, 9, COLORS.offWhite, 'left');
+        }
+    }
+
+    // Average
+    if (resultsPhase >= 1) {
+        const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+        const displayAvg = resultsPhase >= 2 ? avg : avg * resultsAnimProgress;
+
+        const avgY = barStartY + 5 * barSpacing + 10;
+
+        drawText('\u2702', GW / 2 - 60, avgY, 12, '#888');
+        drawText('\u2702', GW / 2 + 60, avgY, 12, '#888');
+        drawText(displayAvg.toFixed(1) + '%', GW / 2, avgY, 20, COLORS.csYellow);
+
+        if (resultsPhase >= 2) {
+            const rank = getRankTitle(avg);
+            drawTextOutline(rank, GW / 2, avgY + 35, 14, avg >= 95 ? COLORS.perfectGold : (avg >= 90 ? '#4CAF50' : COLORS.offWhite), '#000');
+
+            // Worst cut callout
+            if (roundScores.length > 0) {
+                const worstName = names[worstRound];
+                const worstScore = roundScores[worstRound].toFixed(1);
+                drawText('Worst: ' + worstName + ' ' + worstScore + '%', GW / 2, avgY + 65, 7, '#888');
+                drawText('Can you beat it?', GW / 2, avgY + 82, 7, COLORS.csYellow);
+            }
+        }
+    }
+}
+
+function renderMenuShow() {
+    ctx.fillStyle = '#12121A';
+    ctx.fillRect(0, 0, GW, GH);
+
+    drawText('OUR KITCHEN CUTS', GW / 2, 60, 10, COLORS.csYellow);
+    drawText('THEM WITH CARE.', GW / 2, 80, 10, COLORS.csYellow);
+    drawText('CAN YOU?', GW / 2, 100, 10, COLORS.csYellow);
+
+    // Best sandwich
+    const bestIdx = buttons.bestSandwich || 0;
+    const sandIdx = ROUND_CONFIG[bestIdx].sandwichIdx;
+    const data = SANDWICHES[sandIdx];
+
+    // Draw sandwich at 2x
+    ctx.save();
+    ctx.translate(GW / 2, 230);
+    ctx.scale(1.5, 1.5);
+    const tempSw = { x: 0, y: 0, w: 160, h: 64, rotation: 0, visible: true };
+    const origRound = currentRound;
+    currentRound = bestIdx;
+    drawSandwich(tempSw);
+    currentRound = origRound;
+    ctx.restore();
+
+    // Info
+    drawText(data.fullName, GW / 2, 320, 10, COLORS.offWhite);
+    drawText(data.price, GW / 2, 345, 8, COLORS.csYellow);
+
+    drawText('Available at all CS locations', GW / 2, 385, 7, '#888');
+    drawText('4 spots in NYC', GW / 2, 405, 7, '#888');
+    drawText('counterservice.com/locations', GW / 2, 425, 6, '#6688AA');
+
+    // Tap to continue
+    const flash = Math.sin(frameCount * 0.08) * 0.3 + 0.7;
+    ctx.globalAlpha = flash;
+    drawText('TAP TO CONTINUE', GW / 2, 475, 8, '#888');
+    ctx.globalAlpha = 1;
+}
+
+function renderReward() {
+    ctx.fillStyle = '#12121A';
+    ctx.fillRect(0, 0, GW, GH);
+
+    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const { rank, code, desc } = getCouponInfo(avg);
+    const rankTitle = getRankTitle(avg);
+
+    // Rank
+    drawTextOutline(rankTitle, GW / 2, 45, 16, avg >= 95 ? COLORS.perfectGold : (avg >= 90 ? '#4CAF50' : COLORS.offWhite), '#000');
+
+    // Coupon area
+    const couponY = 80;
+    ctx.fillStyle = 'rgba(241,236,191,0.1)';
+    ctx.fillRect(40, couponY, GW - 80, 90);
+    ctx.strokeStyle = COLORS.csYellow;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(40, couponY, GW - 80, 90);
+
+    drawText('Your code: ' + code, GW / 2, couponY + 20, 9, COLORS.csYellow);
+    drawText(desc, GW / 2, couponY + 42, 7, COLORS.offWhite);
+    drawText('Show this screen at checkout', GW / 2, couponY + 60, 6, '#888');
+    drawText('Tap code to copy', GW / 2, couponY + 78, 6, '#666');
+
+    buttons.coupon = { x: 40, y: couponY, w: GW - 80, h: 90 };
+
+    // Action buttons
+    const btnW = GW - 80;
+    const btnH = 36;
+    const btnX = 40;
+    let btnY = 195;
+
+    // Challenge
+    ctx.fillStyle = COLORS.csYellow;
+    drawRoundedRect(btnX, btnY, btnW, btnH, 4);
+    drawText('CHALLENGE A FRIEND', GW / 2, btnY + btnH / 2, 9, '#000');
+    buttons.challenge = { x: btnX, y: btnY, w: btnW, h: btnH };
+
+    btnY += btnH + 12;
+
+    // Save
+    ctx.fillStyle = 'rgba(241,236,191,0.2)';
+    drawRoundedRect(btnX, btnY, btnW, btnH, 4);
+    ctx.strokeStyle = COLORS.csYellow;
+    ctx.lineWidth = 1;
+    drawRoundedRect(btnX, btnY, btnW, btnH, 4, true);
+    drawText('SAVE SCORE CARD', GW / 2, btnY + btnH / 2, 9, COLORS.csYellow);
+    buttons.save = { x: btnX, y: btnY, w: btnW, h: btnH };
+
+    btnY += btnH + 12;
+
+    // Play again
+    ctx.fillStyle = 'rgba(183,71,71,0.3)';
+    drawRoundedRect(btnX, btnY, btnW, btnH, 4);
+    ctx.strokeStyle = COLORS.baronRed;
+    ctx.lineWidth = 1;
+    drawRoundedRect(btnX, btnY, btnW, btnH, 4, true);
+    drawText('PLAY AGAIN', GW / 2, btnY + btnH / 2, 9, COLORS.offWhite);
+    buttons.playAgain = { x: btnX, y: btnY, w: btnW, h: btnH };
+
+    btnY += btnH + 18;
+
+    // Daily Cut teaser
+    if (dailyUnlocked) {
+        const dc = getDailyConfig();
+        const dailySandwich = SANDWICHES[dc.sandwichIdx];
+        ctx.fillStyle = 'rgba(241,236,191,0.08)';
+        ctx.fillRect(40, btnY, GW - 80, 50);
+        drawText('DAILY CUT', GW / 2, btnY + 15, 8, COLORS.csYellow);
+        const rotStr = Math.abs(dc.rotation).toFixed(0);
+        drawText('Today: ' + dailySandwich.name + ' at ' + rotStr + '\u00B0', GW / 2, btnY + 35, 6, '#888');
+        buttons.dailyReward = { x: 40, y: btnY, w: GW - 80, h: 50 };
+        btnY += 60;
+    }
+
+    // Order link
+    drawText('counterservice.com/order', GW / 2, btnY + 10, 7, '#6688AA');
+    buttons.order = { x: 40, y: btnY, w: GW - 80, h: 24 };
+}
+
+function renderDailyResult() {
+    ctx.fillStyle = '#12121A';
+    ctx.fillRect(0, 0, GW, GH);
+
+    drawText('DAILY CUT', GW / 2, 60, 16, COLORS.csYellow);
+
+    const dc = getDailyConfig();
+    const data = SANDWICHES[dc.sandwichIdx];
+    drawText(data.name, GW / 2, 100, 12, COLORS.offWhite);
+
+    if (roundScores.length > 0) {
+        const score = roundScores[0];
+        drawText(score.toFixed(1) + '%', GW / 2, 180, 28, COLORS.csYellow);
+
+        let label;
+        if (score >= 98) label = 'PERFECT!';
+        else if (score >= 90) label = 'NICE!';
+        else if (score >= 80) label = 'OK';
+        else label = 'OOOF';
+        drawText(label, GW / 2, 230, 14, score >= 90 ? COLORS.perfectGold : COLORS.offWhite);
+    }
+
+    drawText('Best: ' + dailyBestScore.toFixed(1) + '%', GW / 2, 290, 9, '#888');
+    drawText('Attempts: ' + dailyAttempts + '/3', GW / 2, 315, 8, '#888');
+
+    const flash = Math.sin(frameCount * 0.08) * 0.3 + 0.7;
+    ctx.globalAlpha = flash;
+    drawText('TAP TO CONTINUE', GW / 2, 420, 8, '#888');
+    ctx.globalAlpha = 1;
+}
+
+// ============================================
+// GAME LOOP
+// ============================================
+
+function gameLoop() {
+    update();
+    render();
+    requestAnimationFrame(gameLoop);
+}
+
+// ============================================
+// PAGE VISIBILITY — PAUSE TIMER
+// ============================================
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden && timerActive) {
+        // Pause effect — we just don't decrement while hidden
+        // (update() won't run while tab is hidden due to rAF)
+    }
+});
+
+// ============================================
+// INITIALIZATION
+// ============================================
+
+function init() {
+    AudioSystem.init();
+
+    // Player ID
+    try {
+        playerId = localStorage.getItem('shortcut_player_id');
+        if (!playerId) {
+            playerId = Math.random().toString(36).substring(2, 7);
+            localStorage.setItem('shortcut_player_id', playerId);
+        }
+    } catch(e) {
+        playerId = Math.random().toString(36).substring(2, 7);
+    }
+
+    // Referral
+    try {
+        const params = new URLSearchParams(window.location.search);
+        refSource = params.get('ref') || '';
+        if (refSource) Analytics.referralArrival(refSource);
+    } catch(e) {}
+
+    // Load state
+    try {
+        shortCallShown = localStorage.getItem('shortcut_short_call') === 'true';
+        dailyUnlocked = localStorage.getItem('shortcut_daily_unlocked') === 'true';
+    } catch(e) {}
+
+    gameLoop();
+}
+
+init();
+    </script>
+</body>
+</html>
