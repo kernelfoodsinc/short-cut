@@ -223,7 +223,7 @@ const SANDWICHES = [
 
 const ROUND_CONFIG = [
     { sandwichIdx: 0, offsetX: 0, rotation: 0, timer: 0, drift: false },
-    { sandwichIdx: 1, offsetRange: [-50, 50], rotation: 0, timer: 0, drift: false },
+    { sandwichIdx: 1, offsetRange: [-70, 70], rotation: 0, timer: 0, drift: false },
     { sandwichIdx: 2, offsetX: 0, rotationRange: [15, 20], timer: 0, drift: false },
     { sandwichIdx: 3, offsetX: 0, rotation: 0, timer: 3.0, drift: false },
     { sandwichIdx: 4, offsetX: 0, rotation: 0, timer: 2.5, drift: true,
@@ -510,6 +510,20 @@ const AudioSystem = {
         this.playNoise(0.1, 1000, 3000, 0.15);
         setTimeout(() => this.playTone(880, 0.1, 'square', 0.2), 50);
         setTimeout(() => this.playTone(1100, 0.1, 'square', 0.2), 100);
+    },
+
+    resultsDrumRoll(duration) {
+        if (!this.ctx) return;
+        const ac = this.ctx;
+        const t = ac.currentTime;
+        // Snare-like noise hits that accelerate over duration
+        const hits = 16;
+        for (let i = 0; i < hits; i++) {
+            const progress = i / hits;
+            const delay = duration * (1 - Math.pow(1 - progress, 2)); // ease-in: accelerating hits
+            const vol = 0.05 + progress * 0.15;
+            setTimeout(() => this.playNoise(0.03, 800, 2000, vol), delay * 1000);
+        }
     }
 };
 
@@ -963,6 +977,19 @@ function startCutAnimation(entry, exit, polyA, polyB, score) {
 
     const dirA = side > 0 ? 1 : -1;
 
+    // Compute perfect center cut line (perpendicular to long axis, through center)
+    const sandRot = (sandwich.rotation || 0) * Math.PI / 180;
+    const perpAngle = sandRot + Math.PI / 2;
+    const halfDiag = Math.sqrt(sandwich.w * sandwich.w + sandwich.h * sandwich.h) / 2;
+    const perfectEntry = {
+        x: sandwich.x + Math.cos(perpAngle) * halfDiag,
+        y: sandwich.y + Math.sin(perpAngle) * halfDiag
+    };
+    const perfectExit = {
+        x: sandwich.x - Math.cos(perpAngle) * halfDiag,
+        y: sandwich.y - Math.sin(perpAngle) * halfDiag
+    };
+
     cutAnim = {
         frame: 0,
         totalFrames: 36,
@@ -976,7 +1003,9 @@ function startCutAnimation(entry, exit, polyA, polyB, score) {
         sandwichState: { ...sandwich },
         flashAlpha: 1,
         separation: 0,
-        done: false
+        done: false,
+        perfectEntry,
+        perfectExit
     };
 
     // Spawn crumbs along cut line
@@ -1026,6 +1055,8 @@ function updateCutAnimation() {
             label = 'NICE!';
             color = COLORS.offWhite;
             AudioSystem.scoreNice();
+            Haptics.vibrate(6);
+            spawnSparkles(GW / 2, GH / 2 - 20, 8);
         } else if (score >= 80) {
             label = 'OK';
             color = '#888';
@@ -1420,6 +1451,8 @@ function advanceToNextRound() {
         resultsAnimProgress = 0;
         resultsPhase = 0;
         resultsTimer = 0;
+        // Drum roll builds through bar animations into rank reveal (~2.5s)
+        AudioSystem.resultsDrumRoll(2.5);
         worstRound = 0;
         for (let i = 1; i < roundScores.length; i++) {
             if (roundScores[i] < roundScores[worstRound]) worstRound = i;
@@ -2599,6 +2632,22 @@ function renderScoreDisplay() {
     if (scoreDisplay.timer <= 0) return;
 
     const alpha = scoreDisplay.timer > 15 ? 1 : scoreDisplay.timer / 15;
+
+    // Ghost line showing perfect center cut
+    if (cutAnim && cutAnim.perfectEntry) {
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.3;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = COLORS.perfectGold;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cutAnim.perfectEntry.x, cutAnim.perfectEntry.y);
+        ctx.lineTo(cutAnim.perfectExit.x, cutAnim.perfectExit.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+    }
+
     ctx.save();
     ctx.globalAlpha = alpha;
 
