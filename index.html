@@ -2555,20 +2555,49 @@ function renderGame() {
         drawText(timerRemaining.toFixed(1) + 's', GW / 2, barY + 22, 8, timerColor);
     }
 
-    // Streak
-    if (streak >= 2) {
+    // Round progress — mini sandwich icons
+    if (!dailyMode) {
+        const iconW = 18, iconH = 7, gap = 8;
+        const totalW = 5 * iconW + 4 * gap;
+        const startX = (GW - totalW) / 2;
+        const iconY = GH - 38;
+        for (let i = 0; i < 5; i++) {
+            const ix = startX + i * (iconW + gap);
+            ctx.save();
+            if (i < currentRound) {
+                // Completed — solid CS yellow
+                ctx.globalAlpha = 0.9;
+                ctx.fillStyle = COLORS.csYellow;
+            } else if (i === currentRound) {
+                // Current — pulsing
+                ctx.globalAlpha = 0.5 + Math.sin(frameCount * 0.1) * 0.3;
+                ctx.fillStyle = COLORS.csYellow;
+            } else {
+                // Future — dim
+                ctx.globalAlpha = 0.25;
+                ctx.fillStyle = '#AAA';
+            }
+            // Baguette shape: rounded elongated pill with tapered ends
+            ctx.beginPath();
+            ctx.ellipse(ix + iconW / 2, iconY, iconW / 2, iconH / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            // Score marks — two tiny diagonal lines
+            ctx.strokeStyle = ctx.fillStyle;
+            ctx.globalAlpha *= 0.5;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(ix + 5, iconY - 2); ctx.lineTo(ix + 7, iconY + 2);
+            ctx.moveTo(ix + 10, iconY - 2); ctx.lineTo(ix + 12, iconY + 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    // Streak text
+    if (streak >= 3) {
         ctx.save();
         ctx.globalAlpha = 0.8;
-        if (streak >= 3) {
-            drawText('ON FIRE!', GW / 2, GH - 60, 10, COLORS.perfectGold);
-        }
-        // Streak dots
-        for (let i = 0; i < Math.min(streak, 5); i++) {
-            ctx.fillStyle = COLORS.perfectGold;
-            ctx.beginPath();
-            ctx.arc(GW / 2 - 30 + i * 15, GH - 40, 4, 0, Math.PI * 2);
-            ctx.fill();
-        }
+        drawText('ON FIRE!', GW / 2, GH - 55, 10, COLORS.perfectGold);
         ctx.restore();
     }
 
@@ -2660,7 +2689,7 @@ function renderScoreDisplay() {
 
     // Subtitle
     if (scoreDisplay.subtitle) {
-        drawText(scoreDisplay.subtitle, GW / 2, GH / 2 - 15, 8, '#AAA');
+        drawTextOutline(scoreDisplay.subtitle, GW / 2, GH / 2 - 15, 8, '#DDD', '#000');
     }
 
     ctx.restore();
