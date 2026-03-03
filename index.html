@@ -742,6 +742,93 @@ function drawRoundedRect(x, y, w, h, r, strokeOnly) {
     else ctx.fill();
 }
 
+function drawChefKnife(cx, cy) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-0.15); // slight angle
+
+    // Blade — stainless steel
+    ctx.fillStyle = '#C0C0C8';
+    ctx.beginPath();
+    ctx.moveTo(-20, -2);   // spine back
+    ctx.lineTo(18, -2);    // spine front
+    ctx.lineTo(22, 0);     // tip
+    ctx.lineTo(18, 3);     // edge front
+    ctx.lineTo(-14, 5);    // belly curve
+    ctx.lineTo(-20, 3);    // heel
+    ctx.closePath();
+    ctx.fill();
+
+    // Blade highlight
+    ctx.fillStyle = '#D8D8E0';
+    ctx.beginPath();
+    ctx.moveTo(-18, -1);
+    ctx.lineTo(16, -1);
+    ctx.lineTo(18, 0);
+    ctx.lineTo(16, 1);
+    ctx.lineTo(-18, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Blade edge — darker line along cutting edge
+    ctx.strokeStyle = '#909098';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-20, 3);
+    ctx.lineTo(-14, 5);
+    ctx.lineTo(18, 3);
+    ctx.lineTo(22, 0);
+    ctx.stroke();
+
+    // Bolster (where blade meets handle)
+    ctx.fillStyle = '#888890';
+    ctx.fillRect(-22, -3, 4, 8);
+
+    // Handle — dark wood
+    ctx.fillStyle = '#3A2A1A';
+    ctx.beginPath();
+    ctx.moveTo(-22, -3);
+    ctx.lineTo(-38, -2);
+    ctx.lineTo(-38, 4);
+    ctx.lineTo(-22, 5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Handle wood grain
+    ctx.strokeStyle = '#2A1A0A';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-36, 0); ctx.lineTo(-24, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-35, 2); ctx.lineTo(-25, 2);
+    ctx.stroke();
+
+    // Rivets
+    ctx.fillStyle = '#888890';
+    ctx.beginPath(); ctx.arc(-32, 1, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-26, 1, 1.5, 0, Math.PI * 2); ctx.fill();
+
+    // Outline
+    ctx.strokeStyle = '#2A1A0A';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-38, -2);
+    ctx.lineTo(-22, -3);
+    ctx.lineTo(-20, -2);
+    ctx.lineTo(18, -2);
+    ctx.lineTo(22, 0);
+    ctx.lineTo(18, 3);
+    ctx.lineTo(-14, 5);
+    ctx.lineTo(-20, 3);
+    ctx.lineTo(-22, 5);
+    ctx.lineTo(-38, 4);
+    ctx.closePath();
+    ctx.stroke();
+
+    ctx.restore();
+}
+
 function drawCrossSection(x, y, w, h, sandwichIdx) {
     const data = SANDWICHES[sandwichIdx];
     const colors = data.crossColors;
@@ -1292,7 +1379,7 @@ function setupRound() {
 
     sandwich.w = 160;
     sandwich.h = 64;
-    sandwich.y = GH / 2 - 20;
+    sandwich.y = 296;
     sandwich.visible = true;
 
     // Position
@@ -1972,14 +2059,15 @@ function renderTitle() {
     ctx.fillRect(0, 0, GW, GH);
 
     // Title
-    drawTextOutline('SHORT', GW / 2, 140, 32, COLORS.csYellow, '#000');
-    drawTextOutline('CUT', GW / 2, 180, 32, COLORS.csYellow, '#000');
+    drawTextOutline('SHORT', GW / 2, 130, 32, COLORS.csYellow, '#000');
+    drawTextOutline('CUT', GW / 2, 170, 32, COLORS.csYellow, '#000');
 
-    // Scissors icon
-    drawText('\u2702', GW / 2, 220, 20, COLORS.offWhite);
+    // Chef knife icon
+    drawChefKnife(GW / 2, 210);
 
-    // Subtitle
-    drawText('Counter Service', GW / 2, 255, 10, '#888');
+    // Stacked CS logo
+    drawText('cOUNTEr', GW / 2, 248, 10, '#AAA');
+    drawText('SERVICE', GW / 2, 264, 10, '#AAA');
 
     // Placeholder sandwich display
     drawSandwichPreview(GW / 2, 330);
@@ -2007,10 +2095,12 @@ function drawSandwichPreview(x, y) {
     ctx.save();
     ctx.translate(x, y);
 
-    // Cutting board
-    ctx.fillStyle = '#3A2A1A';
+    // Cutting board — maple style matching gameplay board
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    drawRoundedRect(-98, -36, 200, 80, 8);
+    ctx.fillStyle = '#C4A06A';
     drawRoundedRect(-100, -40, 200, 80, 8);
-    ctx.fillStyle = '#4A3A2A';
+    ctx.fillStyle = '#D8B880';
     drawRoundedRect(-96, -36, 192, 72, 6);
 
     // Simple sandwich
@@ -2260,6 +2350,115 @@ function buildKitchenScene(k) {
     k.fillRect(0, 0, W, H);
 }
 
+function buildCuttingBoard(bx) {
+    const bLeft = 32, bTop = 150, bW = GW - 64, bH = GH - 220;
+    const r = 14; // corner radius
+
+    // Board shadow
+    bx.fillStyle = 'rgba(0,0,0,0.35)';
+    drawRoundedRectOn(bx, bLeft + 4, bTop + 4, bW, bH, r);
+
+    // Board edge / rim — slightly darker maple
+    bx.fillStyle = '#C4A06A';
+    drawRoundedRectOn(bx, bLeft, bTop, bW, bH, r);
+
+    // Board surface — light maple
+    const inset = 4;
+    bx.fillStyle = '#D8B880';
+    drawRoundedRectOn(bx, bLeft + inset, bTop + inset, bW - inset * 2, bH - inset * 2, r - 2);
+
+    // Horizontal wood grain — alternating maple strip tones
+    const stripColors = ['#DCBC86', '#D4B47C', '#D8B880', '#D0AC74', '#DCBC86', '#D6B67E'];
+    const stripH = 10;
+    bx.save();
+    // Clip to board surface
+    bx.beginPath();
+    drawRoundedRectPath(bx, bLeft + inset, bTop + inset, bW - inset * 2, bH - inset * 2, r - 2);
+    bx.clip();
+
+    for (let y = bTop + inset; y < bTop + bH - inset; y += stripH) {
+        const idx = Math.floor((y - bTop) / stripH) % stripColors.length;
+        bx.fillStyle = stripColors[idx];
+        bx.fillRect(bLeft + inset, y, bW - inset * 2, stripH);
+    }
+
+    // Subtle grain lines within strips
+    bx.strokeStyle = 'rgba(160,120,60,0.12)';
+    bx.lineWidth = 1;
+    for (let y = bTop + inset + 3; y < bTop + bH - inset; y += 5) {
+        bx.beginPath();
+        for (let x = bLeft + inset; x < bLeft + bW - inset; x += 6) {
+            const wave = ((x * 3 + y * 7) % 5 - 2) * 0.4;
+            if (x === bLeft + inset) bx.moveTo(x, y + wave);
+            else bx.lineTo(x, y + wave);
+        }
+        bx.stroke();
+    }
+
+    // Juice groove — recessed channel
+    const gInset = 18;
+    const gLeft = bLeft + gInset, gTop = bTop + gInset;
+    const gW = bW - gInset * 2, gH = bH - gInset * 2;
+    const gR = 8;
+    // Groove shadow (outer edge)
+    bx.strokeStyle = 'rgba(140,100,50,0.25)';
+    bx.lineWidth = 3;
+    bx.beginPath();
+    drawRoundedRectPath(bx, gLeft, gTop, gW, gH, gR);
+    bx.stroke();
+    // Groove highlight (inner edge)
+    bx.strokeStyle = 'rgba(230,200,150,0.2)';
+    bx.lineWidth = 1;
+    bx.beginPath();
+    drawRoundedRectPath(bx, gLeft + 2, gTop + 2, gW - 4, gH - 4, gR - 1);
+    bx.stroke();
+
+    // Etched Counter Service logo — very faint
+    bx.globalAlpha = 0.18;
+    bx.fillStyle = '#6B4A2A';
+    bx.font = '8px "Press Start 2P", cursive';
+    bx.textAlign = 'center';
+    bx.textBaseline = 'middle';
+    const logoY = bTop + bH - 40;
+    bx.fillText('cOUNTEr', bLeft + bW / 2, logoY);
+    bx.fillText('SERVICE', bLeft + bW / 2, logoY + 12);
+    bx.globalAlpha = 1;
+
+    bx.restore();
+
+    // Top edge highlight
+    bx.fillStyle = 'rgba(240,220,180,0.15)';
+    bx.fillRect(bLeft + 8, bTop + 1, bW - 16, 2);
+}
+
+function drawRoundedRectOn(context, x, y, w, h, r) {
+    context.beginPath();
+    context.moveTo(x + r, y);
+    context.lineTo(x + w - r, y);
+    context.arcTo(x + w, y, x + w, y + r, r);
+    context.lineTo(x + w, y + h - r);
+    context.arcTo(x + w, y + h, x + w - r, y + h, r);
+    context.lineTo(x + r, y + h);
+    context.arcTo(x, y + h, x, y + h - r, r);
+    context.lineTo(x, y + r);
+    context.arcTo(x, y, x + r, y, r);
+    context.closePath();
+    context.fill();
+}
+
+function drawRoundedRectPath(context, x, y, w, h, r) {
+    context.moveTo(x + r, y);
+    context.lineTo(x + w - r, y);
+    context.arcTo(x + w, y, x + w, y + r, r);
+    context.lineTo(x + w, y + h - r);
+    context.arcTo(x + w, y + h, x + w - r, y + h, r);
+    context.lineTo(x + r, y + h);
+    context.arcTo(x, y + h, x, y + h - r, r);
+    context.lineTo(x, y + r);
+    context.arcTo(x, y, x + r, y, r);
+    context.closePath();
+}
+
 function renderBoard() {
     // Dimmed kitchen behind the board
     renderKitchenBg(0.2);
@@ -2270,18 +2469,7 @@ function renderBoard() {
         boardCanvas.width = GW;
         boardCanvas.height = GH;
         const bx = boardCanvas.getContext('2d');
-        bx.fillStyle = '#2A1A0E';
-        bx.fillRect(40, 160, GW - 80, GH - 240);
-        bx.fillStyle = '#3A2A1A';
-        bx.fillRect(44, 164, GW - 88, GH - 248);
-        bx.strokeStyle = 'rgba(90,60,30,0.3)';
-        bx.lineWidth = 1;
-        for (let y = 170; y < GH - 90; y += 12) {
-            bx.beginPath();
-            bx.moveTo(48, y);
-            bx.lineTo(GW - 48, y);
-            bx.stroke();
-        }
+        buildCuttingBoard(bx);
     }
     ctx.drawImage(boardCanvas, 0, 0);
 }
