@@ -113,13 +113,23 @@ function splitRectangleByLine(rect, entry, exit) {
     return [polyA, polyB];
 }
 
-function calculateCutScore(polyA, polyB) {
+function calculateCutScore(polyA, polyB, entry, exit, sandwichRotation) {
     const areaA = polygonArea(polyA);
     const areaB = polygonArea(polyB);
     const total = areaA + areaB;
     if (total < 1) return 0;
     const smaller = Math.min(areaA, areaB);
-    return Math.min((smaller / total) * 2 * 100, 100);
+    let rawScore = Math.min((smaller / total) * 2 * 100, 100);
+
+    // Angle penalty: penalize cuts parallel to the sandwich's long axis
+    const cutAngle = Math.atan2(exit.y - entry.y, exit.x - entry.x);
+    const sandAngle = (sandwichRotation || 0) * Math.PI / 180;
+    const angleDiff = cutAngle - sandAngle;
+    const perp = Math.abs(Math.sin(angleDiff)); // 1 = perpendicular, 0 = parallel
+    const penalty = Math.pow(perp, 0.5); // gentle curve
+    rawScore *= (0.5 + 0.5 * penalty); // worst case 50% of raw score
+
+    return Math.min(rawScore, 100);
 }
 
 // ============================================
@@ -137,7 +147,7 @@ function swipeAndScore(rect, startX, startY, endX, endY) {
     if (!hits) return null;
     const polys = splitRectangleByLine(rect, hits[0], hits[1]);
     if (!polys) return null;
-    return calculateCutScore(polys[0], polys[1]);
+    return calculateCutScore(polys[0], polys[1], hits[0], hits[1], rect.rotation);
 }
 
 // ============================================
@@ -495,55 +505,83 @@ describe('splitRectangleByLine', () => {
 });
 
 describe('calculateCutScore', () => {
-    it('returns 100 for a perfect center cut', () => {
+    it('returns ~100 for a perfect perpendicular center cut', () => {
         const rect = { x: 100, y: 100, w: 80, h: 40, rotation: 0 };
         const hits = lineRectIntersection(
             { x: 100, y: 0 }, { x: 100, y: 200 }, rect
         );
         const polys = splitRectangleByLine(rect, hits[0], hits[1]);
-        const score = calculateCutScore(polys[0], polys[1]);
+        const score = calculateCutScore(polys[0], polys[1], hits[0], hits[1], 0);
         assert.ok(score >= 99, `Expected ~100, got ${score}`);
     });
 
-    it('returns ~50 for a 3:1 cut (25% smaller half)', () => {
+    it('returns ~50 for a 3:1 perpendicular cut', () => {
         const rect = { x: 100, y: 100, w: 80, h: 40, rotation: 0 };
-        // Cut at x=80: 20px from left, 60px from right → smaller = 20/80 = 25%
         const hits = lineRectIntersection(
             { x: 80, y: 0 }, { x: 80, y: 200 }, rect
         );
         const polys = splitRectangleByLine(rect, hits[0], hits[1]);
-        const score = calculateCutScore(polys[0], polys[1]);
+        const score = calculateCutScore(polys[0], polys[1], hits[0], hits[1], 0);
         assert.ok(score >= 45 && score <= 55, `Expected ~50, got ${score}`);
     });
 
     it('returns low score for extreme edge cut', () => {
         const rect = { x: 100, y: 100, w: 80, h: 40, rotation: 0 };
-        // Cut at x=65: 5px from left edge → very small piece
         const hits = lineRectIntersection(
             { x: 65, y: 0 }, { x: 65, y: 200 }, rect
         );
         const polys = splitRectangleByLine(rect, hits[0], hits[1]);
-        const score = calculateCutScore(polys[0], polys[1]);
+        const score = calculateCutScore(polys[0], polys[1], hits[0], hits[1], 0);
         assert.ok(score < 20, `Expected <20 for edge cut, got ${score}`);
     });
 
     it('returns 0 for degenerate polygons', () => {
         const score = calculateCutScore(
             [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
-            [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }]
+            [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
+            { x: 0, y: 0 }, { x: 0, y: 1 }, 0
         );
         assert.equal(score, 0);
     });
 
     it('never exceeds 100', () => {
-        // Even with floating point weirdness
         const rect = { x: 100, y: 100, w: 80, h: 40, rotation: 0 };
         const hits = lineRectIntersection(
             { x: 100, y: 0 }, { x: 100, y: 200 }, rect
         );
         const polys = splitRectangleByLine(rect, hits[0], hits[1]);
-        const score = calculateCutScore(polys[0], polys[1]);
+        const score = calculateCutScore(polys[0], polys[1], hits[0], hits[1], 0);
         assert.ok(score <= 100);
+    });
+
+    it('penalizes horizontal cut on non-rotated sandwich', () => {
+        const rect = { x: 100, y: 100, w: 80, h: 40, rotation: 0 };
+        // Horizontal cut through center (parallel to long axis)
+        const hits = lineRectIntersection(
+            { x: 0, y: 100 }, { x: 200, y: 100 }, rect
+        );
+        const polys = splitRectangleByLine(rect, hits[0], hits[1]);
+        const score = calculateCutScore(polys[0], polys[1], hits[0], hits[1], 0);
+        // Equal areas but parallel to long axis → heavy penalty
+        assert.ok(score < 60, `Expected <60 for lengthwise cut, got ${score}`);
+    });
+
+    it('perpendicular cut on rotated sandwich scores high', () => {
+        const rect = { x: 100, y: 100, w: 80, h: 40, rotation: 20 };
+        const angle = 20 * Math.PI / 180;
+        const perpAngle = angle + Math.PI / 2;
+        const hits = lineRectIntersection(
+            { x: 100 + Math.cos(perpAngle) * 100, y: 100 + Math.sin(perpAngle) * 100 },
+            { x: 100 - Math.cos(perpAngle) * 100, y: 100 - Math.sin(perpAngle) * 100 },
+            rect
+        );
+        if (hits) {
+            const polys = splitRectangleByLine(rect, hits[0], hits[1]);
+            if (polys) {
+                const score = calculateCutScore(polys[0], polys[1], hits[0], hits[1], 20);
+                assert.ok(score > 85, `Expected >85 for perpendicular cut on rotated sandwich, got ${score}`);
+            }
+        }
     });
 });
 
@@ -553,9 +591,9 @@ describe('end-to-end: swipe → score', () => {
         assert.ok(score >= 99, `Expected ~100, got ${score}`);
     });
 
-    it('horizontal center swipe scores ~100', () => {
+    it('horizontal center swipe penalized (parallel to long axis)', () => {
         const score = swipeAndScore(SANDWICH, 0, SANDWICH.y, 384, SANDWICH.y);
-        assert.ok(score >= 99, `Expected ~100, got ${score}`);
+        assert.ok(score < 60, `Expected <60 for lengthwise cut, got ${score}`);
     });
 
     it('complete miss returns null', () => {

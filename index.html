@@ -633,13 +633,23 @@ function splitRectangleByLine(rect, entry, exit) {
     return [polyA, polyB];
 }
 
-function calculateCutScore(polyA, polyB) {
+function calculateCutScore(polyA, polyB, entry, exit, sandwichRotation) {
     const areaA = polygonArea(polyA);
     const areaB = polygonArea(polyB);
     const total = areaA + areaB;
     if (total < 1) return 0;
     const smaller = Math.min(areaA, areaB);
-    return Math.min((smaller / total) * 2 * 100, 100);
+    let rawScore = Math.min((smaller / total) * 2 * 100, 100);
+
+    // Angle penalty: penalize cuts parallel to the sandwich's long axis
+    const cutAngle = Math.atan2(exit.y - entry.y, exit.x - entry.x);
+    const sandAngle = (sandwichRotation || 0) * Math.PI / 180;
+    const angleDiff = cutAngle - sandAngle;
+    const perp = Math.abs(Math.sin(angleDiff)); // 1 = perpendicular, 0 = parallel
+    const penalty = Math.pow(perp, 0.5); // gentle curve
+    rawScore *= (0.5 + 0.5 * penalty); // worst case 50% of raw score
+
+    return Math.min(rawScore, 100);
 }
 
 // ============================================
@@ -966,9 +976,7 @@ function startCutAnimation(entry, exit, polyA, polyB, score) {
         sandwichState: { ...sandwich },
         flashAlpha: 1,
         separation: 0,
-        rotA: 0, rotB: 0,
-        driftY: 0,
-        crossSectionWidth: 0
+        done: false
     };
 
     // Spawn crumbs along cut line
@@ -996,11 +1004,7 @@ function updateCutAnimation() {
         // Separation phase
         const sepProgress = (f - 12) / (t - 12);
         const ease = 1 - Math.pow(1 - sepProgress, 3);
-        cutAnim.separation = ease * 30;
-        cutAnim.rotA = ease * 4;
-        cutAnim.rotB = ease * -3;
-        cutAnim.driftY = ease * 10;
-        cutAnim.crossSectionWidth = ease * 8;
+        cutAnim.separation = ease * 25;
 
         if (f === 18) {
             AudioSystem.halvesThud();
@@ -1061,23 +1065,15 @@ function renderCutAnimation() {
     const sw = ca.sandwichState;
     const sandIdx = ca.sandwichIdx;
 
-    // Draw each half with clipping
+    // Draw each half with clipping — clean slide apart, no rotation
     for (let half = 0; half < 2; half++) {
         const poly = half === 0 ? ca.polyA : ca.polyB;
         const dir = half === 0 ? ca.dirA : -ca.dirA;
-        const rot = half === 0 ? ca.rotA : ca.rotB;
         const offsetX = ca.perpX * ca.separation * dir;
-        const offsetY = ca.perpY * ca.separation * dir + ca.driftY * (half === 0 ? 0.5 : 1);
+        const offsetY = ca.perpY * ca.separation * dir;
 
         ctx.save();
         ctx.translate(offsetX, offsetY);
-
-        // Rotate around centroid of polygon
-        const centX = poly.reduce((s, v) => s + v.x, 0) / poly.length;
-        const centY = poly.reduce((s, v) => s + v.y, 0) / poly.length;
-        ctx.translate(centX, centY);
-        ctx.rotate(rot * Math.PI / 180);
-        ctx.translate(-centX, -centY);
 
         // Clip to this half
         ctx.beginPath();
@@ -1088,35 +1084,6 @@ function renderCutAnimation() {
 
         // Draw the sandwich
         drawSandwich(sw, sandIdx);
-
-        ctx.restore();
-    }
-
-    // Draw cross-section between halves
-    if (ca.crossSectionWidth > 0) {
-        const midX = (ca.entry.x + ca.exit.x) / 2;
-        const midY = (ca.entry.y + ca.exit.y) / 2;
-        const csW = ca.crossSectionWidth * 3;
-        const csH = Math.sqrt((ca.exit.x - ca.entry.x) ** 2 + (ca.exit.y - ca.entry.y) ** 2);
-        const angle = Math.atan2(ca.exit.y - ca.entry.y, ca.exit.x - ca.entry.x);
-
-        ctx.save();
-        ctx.translate(midX, midY);
-        ctx.rotate(angle);
-
-        // Draw cross-section layers
-        const colors = SANDWICHES[sandIdx].crossColors;
-        const layerW = csW / 1;
-        const layerH = csH / colors.length;
-        for (let i = 0; i < colors.length; i++) {
-            ctx.fillStyle = colors[i];
-            ctx.fillRect(-csW / 2, -csH / 2 + i * layerH, csW, layerH + 1);
-        }
-
-        // Outline
-        ctx.strokeStyle = COLORS.darkOutline;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(-csW / 2, -csH / 2, csW, csH);
 
         ctx.restore();
     }
@@ -1291,7 +1258,7 @@ function handlePointerUp(cx, cy) {
         return;
     }
 
-    const score = calculateCutScore(polys[0], polys[1]);
+    const score = calculateCutScore(polys[0], polys[1], entry, exit, sandwich.rotation);
     timerActive = false;
 
     startCutAnimation(entry, exit, polys[0], polys[1], score);
