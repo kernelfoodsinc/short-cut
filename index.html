@@ -315,8 +315,9 @@ const buttons = {};
 let cachedRect = null;
 let cachedRectTime = 0;
 
-// Cached board offscreen canvas
+// Cached offscreen canvases
 let boardCanvas = null;
+let kitchenCanvas = null;
 
 // ============================================
 // ANALYTICS
@@ -1963,15 +1964,12 @@ function render() {
 }
 
 function renderTitle() {
-    // Background pattern - subtle grid
-    ctx.strokeStyle = 'rgba(241,236,191,0.05)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < GW; x += 32) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, GH); ctx.stroke();
-    }
-    for (let y = 0; y < GH; y += 32) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(GW, y); ctx.stroke();
-    }
+    // Kitchen background
+    renderKitchenBg();
+
+    // Dark overlay so text is readable
+    ctx.fillStyle = 'rgba(10,10,18,0.7)';
+    ctx.fillRect(0, 0, GW, GH);
 
     // Title
     drawTextOutline('SHORT', GW / 2, 140, 32, COLORS.csYellow, '#000');
@@ -2071,7 +2069,201 @@ function renderIntro() {
     }
 }
 
+function renderKitchenBg(alpha) {
+    if (!kitchenCanvas) {
+        kitchenCanvas = document.createElement('canvas');
+        kitchenCanvas.width = GW;
+        kitchenCanvas.height = GH;
+        const k = kitchenCanvas.getContext('2d');
+        buildKitchenScene(k);
+    }
+    if (alpha !== undefined && alpha < 1) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(kitchenCanvas, 0, 0);
+        ctx.restore();
+    } else {
+        ctx.drawImage(kitchenCanvas, 0, 0);
+    }
+}
+
+function buildKitchenScene(k) {
+    const W = GW, H = GH;
+
+    // === CEILING (y: 0–40) ===
+    k.fillStyle = '#2A2A30';
+    k.fillRect(0, 0, W, 42);
+    // Ceiling panels
+    k.fillStyle = '#323238';
+    for (let x = 0; x < W; x += 96) {
+        k.fillRect(x + 2, 2, 92, 36);
+    }
+    // Panel highlight lines
+    k.strokeStyle = '#3A3A42';
+    k.lineWidth = 1;
+    for (let x = 0; x < W; x += 96) {
+        k.beginPath(); k.moveTo(x + 2, 2); k.lineTo(x + 94, 2); k.stroke();
+    }
+
+    // Fluorescent tube lights
+    for (let lx = 60; lx < W; lx += 160) {
+        // Housing
+        k.fillStyle = '#505058';
+        k.fillRect(lx - 40, 28, 80, 8);
+        // Tube glow
+        k.fillStyle = '#E8E8D8';
+        k.fillRect(lx - 34, 30, 68, 4);
+        // Glow halo
+        k.fillStyle = 'rgba(240,240,220,0.06)';
+        k.fillRect(lx - 50, 36, 100, 20);
+    }
+
+    // === HOOD VENT (y: 40–70) ===
+    k.fillStyle = '#606068';
+    k.fillRect(20, 40, W - 40, 32);
+    // Vent slats
+    k.strokeStyle = '#50505A';
+    k.lineWidth = 1;
+    for (let y = 44; y < 70; y += 4) {
+        k.beginPath(); k.moveTo(24, y); k.lineTo(W - 24, y); k.stroke();
+    }
+    // Hood lip / drip edge
+    k.fillStyle = '#707078';
+    k.fillRect(18, 70, W - 36, 3);
+    // Highlight on hood top
+    k.fillStyle = '#6E6E78';
+    k.fillRect(20, 40, W - 40, 1);
+
+    // === UPPER WALL — WOOD PANELING + MENU BOARD (y: 73–160) ===
+    k.fillStyle = '#8B6B4A';
+    k.fillRect(0, 73, W, 87);
+    // Wood grain lines
+    k.strokeStyle = '#7A5C3C';
+    k.lineWidth = 1;
+    for (let y = 76; y < 160; y += 6) {
+        k.beginPath();
+        k.moveTo(0, y);
+        for (let x = 0; x < W; x += 8) {
+            k.lineTo(x, y + ((x * 7 + y * 3) % 3 - 1));
+        }
+        k.stroke();
+    }
+    // Vertical board seams
+    k.strokeStyle = '#6B4C2E';
+    k.lineWidth = 1;
+    for (let x = 48; x < W; x += 48) {
+        k.beginPath(); k.moveTo(x, 73); k.lineTo(x, 160); k.stroke();
+    }
+
+    // Menu board — simplified kraft rectangle with divider
+    k.fillStyle = '#C4AA80';
+    k.fillRect(30, 80, W - 60, 50);
+    k.strokeStyle = '#A08860';
+    k.lineWidth = 1;
+    k.strokeRect(30, 80, W - 60, 50);
+    // Center divider
+    k.strokeStyle = '#8A7050';
+    k.beginPath(); k.moveTo(W / 2, 84); k.lineTo(W / 2, 126); k.stroke();
+
+    // Ticket rail with order slips
+    k.fillStyle = '#888890';
+    k.fillRect(24, 140, W - 48, 3);
+    // Brackets
+    k.fillStyle = '#606068';
+    for (let x = 40; x < W - 40; x += 80) {
+        k.fillRect(x, 139, 4, 5);
+    }
+    // Tickets
+    const ticketColors = ['#F0EAD8', '#EEEED8', '#F2ECDA'];
+    for (let i = 0; i < 5; i++) {
+        const tx = 60 + i * 64;
+        const th = 12 + (i * 7 % 4);
+        k.fillStyle = ticketColors[i % ticketColors.length];
+        k.fillRect(tx, 143, 24, th);
+    }
+
+    // === STAINLESS STEEL BACKSPLASH (y: 160–210) ===
+    k.fillStyle = '#A0A0A8';
+    k.fillRect(0, 160, W, 52);
+    // Brushed steel horizontal lines
+    k.strokeStyle = '#96969E';
+    k.lineWidth = 1;
+    for (let y = 162; y < 212; y += 2) {
+        k.globalAlpha = 0.3 + (y % 4 === 0 ? 0.15 : 0);
+        k.beginPath(); k.moveTo(0, y); k.lineTo(W, y); k.stroke();
+    }
+    k.globalAlpha = 1;
+    // Highlight strip
+    k.fillStyle = '#B8B8C0';
+    k.fillRect(0, 165, W, 1);
+
+    // === STAINLESS STEEL COUNTER / PREP AREA (y: 212–430) ===
+    k.fillStyle = '#B0B0B8';
+    k.fillRect(0, 212, W, 220);
+    // Brushed steel texture
+    k.strokeStyle = '#A4A4AC';
+    k.lineWidth = 1;
+    for (let y = 214; y < 432; y += 2) {
+        k.globalAlpha = 0.2 + ((y * 13) % 5) * 0.05;
+        k.beginPath(); k.moveTo(0, y); k.lineTo(W, y); k.stroke();
+    }
+    k.globalAlpha = 1;
+    // Counter top highlight
+    k.fillStyle = '#C4C4CC';
+    k.fillRect(0, 212, W, 2);
+    // Counter front lip
+    k.fillStyle = '#989898';
+    k.fillRect(0, 430, W, 4);
+
+    // Subtle reflections on counter surface
+    k.fillStyle = 'rgba(200,200,210,0.06)';
+    k.fillRect(30, 240, 60, 160);
+    k.fillRect(W - 90, 250, 60, 150);
+
+    // === PENNY TILE FLOOR (y: 434–512) ===
+    k.fillStyle = '#D8D8D8';
+    k.fillRect(0, 434, W, 78);
+    // Penny tile pattern
+    const tileSize = 6;
+    const tileGap = 1;
+    const tileStep = tileSize + tileGap;
+    for (let row = 0; row < 12; row++) {
+        const rowY = 436 + row * tileStep;
+        const offset = (row % 2) * (tileStep / 2);
+        for (let col = 0; col < Math.ceil(W / tileStep) + 1; col++) {
+            const tileX = offset + col * tileStep;
+            const hash = (col * 7 + row * 13) % 10;
+            k.fillStyle = hash < 3 ? '#2A2A2A' : '#E4E4E4';
+            k.beginPath();
+            k.arc(tileX + tileSize / 2, rowY + tileSize / 2, tileSize / 2, 0, Math.PI * 2);
+            k.fill();
+        }
+    }
+    // Floor edge shadow
+    k.fillStyle = 'rgba(0,0,0,0.2)';
+    k.fillRect(0, 434, W, 3);
+
+    // === VIGNETTE ===
+    const vignette = k.createLinearGradient(0, 0, 0, H);
+    vignette.addColorStop(0, 'rgba(0,0,0,0.3)');
+    vignette.addColorStop(0.15, 'rgba(0,0,0,0)');
+    vignette.addColorStop(0.85, 'rgba(0,0,0,0)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.25)');
+    k.fillStyle = vignette;
+    k.fillRect(0, 0, W, H);
+    const sideVig = k.createLinearGradient(0, 0, W, 0);
+    sideVig.addColorStop(0, 'rgba(0,0,0,0.15)');
+    sideVig.addColorStop(0.1, 'rgba(0,0,0,0)');
+    sideVig.addColorStop(0.9, 'rgba(0,0,0,0)');
+    sideVig.addColorStop(1, 'rgba(0,0,0,0.15)');
+    k.fillStyle = sideVig;
+    k.fillRect(0, 0, W, H);
+}
+
 function renderBoard() {
+    // Dimmed kitchen behind the board
+    renderKitchenBg(0.2);
+
     // Use cached offscreen canvas for the cutting board
     if (!boardCanvas) {
         boardCanvas = document.createElement('canvas');
