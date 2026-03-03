@@ -167,7 +167,7 @@ const GAME_URL = 'https://games.counterservice.com/short-cut/';
 const SANDWICHES = [
     {
         id: 'greenGoddess',
-        name: 'Green Goddess',
+        name: 'Chicken Club',
         fullName: 'Green Goddess Chicken Club',
         price: '$10.95 Short / $17.95 Full',
         flavor: 'Pulled chicken. Goddess spread. Bacon. The fan fave for a reason.',
@@ -181,7 +181,7 @@ const SANDWICHES = [
         fullName: 'The Smokeshow',
         price: '$9.95 Short / $15.95 Full',
         flavor: 'Smokey BBQ. Jalape\u00f1os three ways. Melty cheddar.',
-        dominant: '#8B6A4A',
+        dominant: '#7B4A3A',
         layers: ['#D4A54A','#6B4A3A','#F0E8D8','#5B8B3A','#C45A3A','#8B7A4A','#C4A44A','#6B3A5B','#E8C46A'],
         crossColors: ['#E8C46A','#F0E8D8','#6B4A3A','#5B8B3A','#C45A3A','#8B7A4A','#6B3A5B','#E8C46A']
     },
@@ -201,7 +201,7 @@ const SANDWICHES = [
         fullName: 'The Baron',
         price: '$11.95 Short / $19.95 Full',
         flavor: 'Slow roasted beef. Aged white cheddar. Horseradish.',
-        dominant: '#D89898',
+        dominant: '#C47070',
         layers: ['#D4A54A','#D89898','#C47878','#F0EAE0','#C43A2A','#E8B0A8','#3A6B2A','#3A2A1A','#E8C46A'],
         crossColors: ['#E8C46A','#D89898','#F0EAE0','#C43A2A','#D89898','#3A6B2A','#3A2A1A','#E8C46A']
     },
@@ -211,7 +211,7 @@ const SANDWICHES = [
         fullName: 'Chicken Caesar',
         price: '$10.95 Short / $17.95 Full',
         flavor: 'Our Caesar. Melted provolone. On a hero roll. Not a salad.',
-        dominant: '#C4A46A',
+        dominant: '#E8E0C8',
         layers: ['#D4A54A','#C4A46A','#7BC35A','#E8D8A0','#E8E0C8','#A88A4A','#5BA43A','#D8BA80','#E8C46A'],
         crossColors: ['#E8C46A','#C4A46A','#7BC35A','#E8D8A0','#E8E0C8','#5BA43A','#D8BA80','#E8C46A']
     }
@@ -1516,13 +1516,13 @@ function setupRewardScreen() {
 function getCouponInfo(avg) {
     if (avg >= 95) return { rank: 'Sous Chef', code: 'SHORTCUT', desc: '$5 off $20 for you AND a friend' };
     if (avg >= 90) return { rank: 'Line Cook', code: 'LINECUT', desc: '$3 off your next order ($12+)' };
-    return { rank: 'First Cut', code: 'FIRSTCUT', desc: 'Free cookie with any purchase' };
+    return { rank: 'Prep Cook', code: 'FIRSTCUT', desc: 'Free cookie with any purchase' };
 }
 
 function getRankTitle(avg) {
     if (avg >= 95) return 'SOUS CHEF';
     if (avg >= 90) return 'LINE COOK';
-    return 'FIRST CUT';
+    return 'PREP COOK';
 }
 
 // ============================================
@@ -1602,7 +1602,7 @@ function getShareText() {
     const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
     const rank = getRankTitle(avg);
     let text = '\u2702\uFE0F Short Cut \uD83E\uDD6A\n';
-    const names = ['Green Goddess', 'Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
+    const names = ['Chicken Club', 'The Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
     for (let i = 0; i < roundScores.length; i++) {
         const name = names[i].padEnd(16);
         text += name + roundScores[i].toFixed(1) + '%\n';
@@ -1622,62 +1622,103 @@ async function generateShareCard() {
     c.height = 1350;
     const cx = c.getContext('2d');
 
-    // Background
-    cx.fillStyle = '#12121A';
+    // Kraft paper background
+    cx.fillStyle = '#C4A87C';
     cx.fillRect(0, 0, 1080, 1350);
 
-    // Border
-    cx.strokeStyle = COLORS.csYellow;
-    cx.lineWidth = 4;
+    // Paper grain texture
+    cx.save();
+    cx.globalAlpha = 0.06;
+    for (let i = 0; i < 3000; i++) {
+        const gx = Math.random() * 1080;
+        const gy = Math.random() * 1350;
+        cx.fillStyle = Math.random() > 0.5 ? '#A08050' : '#D8C4A0';
+        cx.fillRect(gx, gy, Math.random() * 3 + 1, 1);
+    }
+    cx.restore();
+
+    // Black border
+    cx.strokeStyle = '#000';
+    cx.lineWidth = 8;
     cx.strokeRect(30, 30, 1020, 1290);
+    cx.strokeStyle = '#333';
+    cx.lineWidth = 2;
+    cx.strokeRect(42, 42, 996, 1266);
 
-    // Title
+    // Title — stacked logo
     cx.font = '36px "Press Start 2P", cursive';
-    cx.fillStyle = COLORS.csYellow;
+    cx.fillStyle = '#000';
     cx.textAlign = 'center';
-    cx.fillText('S H O R T  C U T', 540, 120);
+    cx.fillText('S H O R T  C U T', 540, 110);
 
-    cx.font = '16px "Press Start 2P", cursive';
-    cx.fillStyle = COLORS.offWhite;
-    cx.fillText('Counter Service', 540, 170);
+    cx.font = '18px "Press Start 2P", cursive';
+    cx.fillStyle = '#000';
+    cx.fillText('cOUNTEr', 540, 155);
+    cx.fillText('SERVICE', 540, 180);
+
+    // Thin divider line
+    cx.strokeStyle = '#000';
+    cx.lineWidth = 1;
+    cx.beginPath();
+    cx.moveTo(120, 210);
+    cx.lineTo(960, 210);
+    cx.stroke();
 
     // Score bars
-    const names = ['Green Goddess', 'Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
-    const barY = 250;
+    const names = ['Chicken Club', 'The Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
+    const barY = 260;
     const barH = 50;
-    const barSpacing = 80;
-    const barMaxW = 600;
-    const barX = 140;
+    const barSpacing = 100;
+    const barMaxW = 560;
+    const barX = 200;
 
     for (let i = 0; i < roundScores.length; i++) {
         const y = barY + i * barSpacing;
         const pct = roundScores[i] / 100;
+        const sandIdx = ROUND_CONFIG[i].sandwichIdx;
+        const dominant = SANDWICHES[sandIdx].dominant;
 
-        // Background bar
-        cx.fillStyle = '#2A2A3E';
-        cx.fillRect(barX, y, barMaxW, barH);
-
-        // Filled bar
-        let barColor;
-        if (roundScores[i] >= 98) barColor = COLORS.perfectGold;
-        else if (roundScores[i] >= 90) barColor = '#4CAF50';
-        else if (roundScores[i] >= 80) barColor = '#FFA726';
-        else barColor = COLORS.baronRed;
-        cx.fillStyle = barColor;
-        cx.fillRect(barX, y, barMaxW * pct, barH);
-
-        // Score text
-        cx.font = '20px "Press Start 2P", cursive';
-        cx.fillStyle = COLORS.offWhite;
-        cx.textAlign = 'right';
-        cx.fillText(roundScores[i].toFixed(1) + '%', barX + barMaxW + 120, y + barH / 2 + 8);
+        // Mini sandwich from the game (swap ctx temporarily)
+        const origCtx = ctx;
+        ctx = cx;
+        cx.save();
+        cx.translate(barX - 55, y + barH / 2);
+        cx.scale(0.5, 0.5);
+        const miniSw = { x: 0, y: 0, w: 160, h: 64, rotation: 0 };
+        drawSandwich(miniSw, sandIdx);
+        cx.restore();
+        ctx = origCtx;
 
         // Name
         cx.font = '14px "Press Start 2P", cursive';
         cx.textAlign = 'left';
-        cx.fillStyle = '#AAA';
-        cx.fillText(names[i], barX, y - 10);
+        cx.fillStyle = '#000';
+        cx.fillText(names[i], barX, y - 12);
+
+        // Bar background (grooved shadow)
+        cx.fillStyle = '#A08060';
+        cx.fillRect(barX, y, barMaxW, barH);
+        cx.fillStyle = '#B89870';
+        cx.fillRect(barX + 1, y + 1, barMaxW - 2, barH - 2);
+
+        // Bar fill — sandwich dominant color
+        cx.fillStyle = dominant;
+        cx.fillRect(barX + 1, y + 1, (barMaxW - 2) * pct, barH - 2);
+
+        // Score text
+        cx.font = '20px "Press Start 2P", cursive';
+        cx.fillStyle = '#000';
+        cx.textAlign = 'right';
+        cx.fillText(roundScores[i].toFixed(1) + '%', barX + barMaxW + 130, y + barH / 2 + 8);
     }
+
+    // Divider before average
+    cx.strokeStyle = '#000';
+    cx.lineWidth = 1;
+    cx.beginPath();
+    cx.moveTo(120, barY + 5 * barSpacing - 20);
+    cx.lineTo(960, barY + 5 * barSpacing - 20);
+    cx.stroke();
 
     // Average + Rank
     const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
@@ -1685,22 +1726,27 @@ async function generateShareCard() {
 
     cx.textAlign = 'center';
     cx.font = '14px "Press Start 2P", cursive';
-    cx.fillStyle = '#888';
-    cx.fillText('\u2702 AVERAGE \u2702', 540, barY + 5 * barSpacing + 20);
+    cx.fillStyle = '#000';
+    cx.fillText('\u2702 AVERAGE \u2702', 540, barY + 5 * barSpacing + 10);
 
     cx.font = '48px "Press Start 2P", cursive';
-    cx.fillStyle = COLORS.csYellow;
-    cx.fillText(avg.toFixed(1) + '%', 540, barY + 5 * barSpacing + 80);
+    cx.fillStyle = '#000';
+    cx.fillText(avg.toFixed(1) + '%', 540, barY + 5 * barSpacing + 75);
 
-    cx.font = '28px "Press Start 2P", cursive';
-    cx.fillStyle = avg >= 95 ? COLORS.perfectGold : (avg >= 90 ? '#4CAF50' : COLORS.offWhite);
-    cx.fillText(rank, 540, barY + 5 * barSpacing + 130);
+    // Rank banner — Baron Red
+    const bannerY = barY + 5 * barSpacing + 100;
+    cx.fillStyle = '#E1625D';
+    cx.fillRect(240, bannerY, 600, 55);
+    cx.font = '24px "Press Start 2P", cursive';
+    cx.fillStyle = '#FFF';
+    cx.fillText(rank, 540, bannerY + 35);
 
     // URL
-    cx.font = '14px "Press Start 2P", cursive';
-    cx.fillStyle = '#666';
-    cx.fillText('games.counterservice.com', 540, 1230);
-    cx.fillText('/short-cut/?ref=' + playerId, 540, 1260);
+    cx.font = '12px "Press Start 2P", cursive';
+    cx.fillStyle = '#000';
+    cx.fillText('games.counterservice.com/short-cut', 540, 1250);
+    cx.font = '10px "Press Start 2P", cursive';
+    cx.fillText('?ref=' + playerId, 540, 1275);
 
     return new Promise(resolve => {
         c.toBlob(blob => resolve(blob), 'image/png');
@@ -1954,10 +2000,7 @@ function update(deltaTime) {
                     Haptics.results();
                 }
             }
-            // Phase 2: rank reveal, wait for tap or auto-advance
-            if (resultsPhase === 2 && resultsTimer > 18 * roundScores.length + 160) {
-                advanceFromResults();
-            }
+            // Phase 2: rank reveal, wait for tap to continue (no auto-advance)
             break;
 
         case 'menu_show':
@@ -2715,15 +2758,33 @@ function renderShortCall() {
 }
 
 function renderResults() {
-    ctx.fillStyle = '#12121A';
+    // Kraft paper background
+    ctx.fillStyle = '#C4A87C';
     ctx.fillRect(0, 0, GW, GH);
 
-    // Title
-    drawText('S H O R T  C U T', GW / 2, 40, 14, COLORS.csYellow);
-    drawText('Counter Service', GW / 2, 65, 8, '#888');
+    // Paper grain
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    for (let i = 0; i < 400; i++) {
+        const gx = Math.random() * GW;
+        const gy = Math.random() * GH;
+        ctx.fillStyle = Math.random() > 0.5 ? '#A08050' : '#D8C4A0';
+        ctx.fillRect(gx, gy, Math.random() * 3 + 1, 1);
+    }
+    ctx.restore();
+
+    // Black border
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(10, 10, GW - 20, GH - 20);
+
+    // Title — stacked logo
+    drawText('S H O R T  C U T', GW / 2, 35, 14, '#000');
+    drawText('cOUNTEr', GW / 2, 58, 8, '#000');
+    drawText('SERVICE', GW / 2, 72, 8, '#000');
 
     // Score bars
-    const names = ['Green Goddess', 'Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
+    const names = ['Chicken Club', 'The Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
     const barStartY = 100;
     const barH = 20;
     const barSpacing = 52;
@@ -2736,27 +2797,33 @@ function renderResults() {
 
         if (barProgress <= 0) continue;
 
+        const sandIdx = ROUND_CONFIG[i].sandwichIdx;
+        const dominant = SANDWICHES[sandIdx].dominant;
+
+        // Mini sandwich from the game
+        ctx.save();
+        ctx.translate(barX - 25, y + barH / 2);
+        ctx.scale(0.2, 0.2);
+        const miniSw = { x: 0, y: 0, w: 160, h: 64, rotation: 0 };
+        drawSandwich(miniSw, sandIdx);
+        ctx.restore();
+
         // Name
-        drawText(names[i], barX, y - 12, 7, '#AAA', 'left');
+        drawText(names[i], barX, y - 12, 7, '#000', 'left');
 
-        // Bar bg
-        ctx.fillStyle = '#2A2A3E';
+        // Bar bg (grooved)
+        ctx.fillStyle = '#A08060';
         ctx.fillRect(barX, y, barMaxW, barH);
+        ctx.fillStyle = '#B89870';
+        ctx.fillRect(barX + 1, y + 1, barMaxW - 2, barH - 2);
 
-        // Bar fill
-        const pct = roundScores[i] / 100;
-        let barColor;
-        if (roundScores[i] >= 98) barColor = COLORS.perfectGold;
-        else if (roundScores[i] >= 90) barColor = '#4CAF50';
-        else if (roundScores[i] >= 80) barColor = '#FFA726';
-        else barColor = COLORS.baronRed;
-
-        ctx.fillStyle = barColor;
-        ctx.fillRect(barX, y, barMaxW * pct * barProgress, barH);
+        // Bar fill — sandwich dominant color
+        ctx.fillStyle = dominant;
+        ctx.fillRect(barX + 1, y + 1, (barMaxW - 2) * (roundScores[i] / 100) * barProgress, barH - 2);
 
         // Score text
         if (barProgress >= 1) {
-            drawText(roundScores[i].toFixed(1) + '%', barX + barMaxW + 15, y + barH / 2, 9, COLORS.offWhite, 'left');
+            drawText(roundScores[i].toFixed(1) + '%', barX + barMaxW + 15, y + barH / 2, 9, '#000', 'left');
         }
     }
 
@@ -2767,21 +2834,40 @@ function renderResults() {
 
         const avgY = barStartY + 5 * barSpacing + 10;
 
-        drawText('\u2702', GW / 2 - 60, avgY, 12, '#888');
-        drawText('\u2702', GW / 2 + 60, avgY, 12, '#888');
-        drawText(displayAvg.toFixed(1) + '%', GW / 2, avgY, 20, COLORS.csYellow);
+        // Divider
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(40, avgY - 20);
+        ctx.lineTo(GW - 40, avgY - 20);
+        ctx.stroke();
+
+        drawText('\u2702', GW / 2 - 60, avgY, 12, '#000');
+        drawText('\u2702', GW / 2 + 60, avgY, 12, '#000');
+        drawText(displayAvg.toFixed(1) + '%', GW / 2, avgY, 20, '#000');
 
         if (resultsPhase >= 2) {
             const rank = getRankTitle(avg);
-            drawTextOutline(rank, GW / 2, avgY + 35, 14, avg >= 95 ? COLORS.perfectGold : (avg >= 90 ? '#4CAF50' : COLORS.offWhite), '#000');
+
+            // Rank banner — Baron Red
+            ctx.fillStyle = '#E1625D';
+            ctx.fillRect(GW / 2 - 100, avgY + 20, 200, 30);
+            drawText(rank, GW / 2, avgY + 35, 12, '#FFF');
 
             // Worst cut callout
             if (roundScores.length > 0) {
                 const worstName = names[worstRound];
                 const worstScore = roundScores[worstRound].toFixed(1);
-                drawText('Worst: ' + worstName + ' ' + worstScore + '%', GW / 2, avgY + 65, 7, '#888');
-                drawText('Can you beat it?', GW / 2, avgY + 82, 7, COLORS.csYellow);
+                drawText('Worst: ' + worstName + ' ' + worstScore + '%', GW / 2, avgY + 70, 7, '#000');
+                drawText('Can you beat it?', GW / 2, avgY + 87, 7, '#000');
             }
+
+            // Tap to continue
+            const flash = Math.sin(frameCount * 0.08) * 0.2 + 0.6;
+            ctx.save();
+            ctx.globalAlpha = flash;
+            drawText('TAP TO CONTINUE', GW / 2, GH - 30, 8, '#000');
+            ctx.restore();
         }
     }
 }
