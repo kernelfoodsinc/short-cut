@@ -170,7 +170,7 @@ const SANDWICHES = [
         name: 'Green Goddess',
         fullName: 'Green Goddess Chicken Club',
         price: '$10.95 Short / $17.95 Full',
-        flavor: 'The fan favorite. No pressure.',
+        flavor: 'Pulled chicken. Goddess spread. Bacon. The fan fave for a reason.',
         dominant: '#5B8C3A',
         layers: ['#D4A54A','#5B8C3A','#D4B896','#8B3A2A','#7DB356','#9B3A5B','#E8D8A0','#3A6B2A','#E8C46A'],
         crossColors: ['#E8C46A','#5B8C3A','#D4B896','#8B3A2A','#E8D8A0','#7DB356','#3A6B2A','#E8C46A']
@@ -180,7 +180,7 @@ const SANDWICHES = [
         name: 'The Smokeshow',
         fullName: 'The Smokeshow',
         price: '$9.95 Short / $15.95 Full',
-        flavor: 'Jalape\u00f1os three ways. Handle with care.',
+        flavor: 'Smokey BBQ. Jalape\u00f1os three ways. Melty cheddar.',
         dominant: '#8B6A4A',
         layers: ['#D4A54A','#6B4A3A','#F0E8D8','#5B8B3A','#C45A3A','#8B7A4A','#C4A44A','#6B3A5B','#E8C46A'],
         crossColors: ['#E8C46A','#F0E8D8','#6B4A3A','#5B8B3A','#C45A3A','#8B7A4A','#6B3A5B','#E8C46A']
@@ -190,7 +190,7 @@ const SANDWICHES = [
         name: 'Buffalo Chicken',
         fullName: 'Buffalo Chicken',
         price: '$9.95 Short / $15.95 Full',
-        flavor: 'Back from Not a Bowl. Now hold it steady.',
+        flavor: 'Hot buffalo. Cool ranch. Melty cheddar. Enough said.',
         dominant: '#D47A3A',
         layers: ['#D4A54A','#D47A3A','#F0EAE0','#E89A5A','#8BC46A','#D8D0C4','#E8A040','#6BA44A','#E8C46A'],
         crossColors: ['#E8C46A','#D47A3A','#F0EAE0','#8BC46A','#D8D0C4','#E8A040','#6BA44A','#E8C46A']
@@ -200,7 +200,7 @@ const SANDWICHES = [
         name: 'The Baron',
         fullName: 'The Baron',
         price: '$11.95 Short / $19.95 Full',
-        flavor: 'The Baron demands respect. You have 3 seconds.',
+        flavor: 'Slow roasted beef. Aged white cheddar. Horseradish.',
         dominant: '#D89898',
         layers: ['#D4A54A','#D89898','#C47878','#F0EAE0','#C43A2A','#E8B0A8','#3A6B2A','#3A2A1A','#E8C46A'],
         crossColors: ['#E8C46A','#D89898','#F0EAE0','#C43A2A','#D89898','#3A6B2A','#3A2A1A','#E8C46A']
@@ -210,7 +210,7 @@ const SANDWICHES = [
         name: 'Chicken Caesar',
         fullName: 'Chicken Caesar',
         price: '$10.95 Short / $17.95 Full',
-        flavor: 'Our most-ordered Short. Moving target. Clock\'s ticking.',
+        flavor: 'Our Caesar. Melted provolone. On a hero roll. Not a salad.',
         dominant: '#C4A46A',
         layers: ['#D4A54A','#C4A46A','#7BC35A','#E8D8A0','#E8E0C8','#A88A4A','#5BA43A','#D8BA80','#E8C46A'],
         crossColors: ['#E8C46A','#C4A46A','#7BC35A','#E8D8A0','#E8E0C8','#5BA43A','#D8BA80','#E8C46A']
@@ -273,6 +273,7 @@ let scoreDisplay = { score: 0, label: '', subtitle: '', color: '#FFF', timer: 0 
 
 // Intro state
 let introTimer = 0;
+let goTimer = 0;
 
 // Results state
 let resultsAnimProgress = 0;
@@ -1170,7 +1171,15 @@ function handlePointerDown(cx, cy) {
         return;
     }
 
-    if (gameState === 'intro') return;
+    if (gameState === 'intro') {
+        // Tap to skip intro → go to ready with GO! flash
+        if (introTimer > 20) {
+            gameState = 'ready';
+            goTimer = 30;
+            AudioSystem.uiSelect();
+        }
+        return;
+    }
 
     if (gameState === 'ready' || gameState === 'cutting') {
         swipe.active = true;
@@ -1398,11 +1407,11 @@ function setupRound() {
         sandwich.rotation = config.rotation || 0;
     }
 
-    // Timer
+    // Timer — deferred until GO! flash ends (see ready case in update)
     if (config.timer > 0) {
         timerTotal = config.timer;
         timerRemaining = config.timer;
-        timerActive = true;
+        timerActive = false;
     } else {
         timerActive = false;
         timerRemaining = 0;
@@ -1875,17 +1884,30 @@ function update(deltaTime) {
                 AudioSystem.sandwichEntrance();
             }
             sandwichEntranceProgress = Math.min(1, introTimer / 40);
-            if (introTimer >= 90) {
+            if (introTimer >= 150) {
                 gameState = 'ready';
+                goTimer = 30;
             }
             break;
 
         case 'ready':
+            if (goTimer > 0) {
+                goTimer--;
+                if (goTimer === 0 && timerTotal > 0) {
+                    timerActive = true;
+                }
+            }
             updateDrift();
             updateTimer();
             break;
 
         case 'cutting':
+            if (goTimer > 0) {
+                goTimer--;
+                if (goTimer === 0 && timerTotal > 0) {
+                    timerActive = true;
+                }
+            }
             updateDrift();
             updateTimer();
             // Update trail particles
@@ -2072,10 +2094,16 @@ function renderTitle() {
     // Placeholder sandwich display
     drawSandwichPreview(GW / 2, 330);
 
+    // Instructions
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    drawText('SWIPE TO SLICE PERFECTLY IN HALF', GW / 2, 400, 7, '#AAA');
+    ctx.restore();
+
     // Tap to play
     const flash = Math.sin(frameCount * 0.08) * 0.3 + 0.7;
     ctx.globalAlpha = flash;
-    drawText('TAP TO PLAY', GW / 2, 430, 12, COLORS.offWhite);
+    drawText('TAP TO PLAY', GW / 2, 435, 12, COLORS.offWhite);
     ctx.globalAlpha = 1;
 
     // Daily cut button
@@ -2118,36 +2146,48 @@ function renderIntro() {
     const sandIdx = dailyMode ? dailyConfig.sandwichIdx : config.sandwichIdx;
     const data = SANDWICHES[sandIdx];
 
-    // Round number
+    // Round number — above the board
     if (!dailyMode) {
-        drawText('ROUND ' + (currentRound + 1), GW / 2, 80, 16, COLORS.csYellow);
+        drawText('ROUND ' + (currentRound + 1), GW / 2, 50, 16, COLORS.csYellow);
     } else {
-        drawText('DAILY CUT', GW / 2, 80, 16, COLORS.csYellow);
+        drawText('DAILY CUT', GW / 2, 50, 16, COLORS.csYellow);
     }
 
-    // Sandwich name
-    drawText(data.name.toUpperCase(), GW / 2, 130, 14, COLORS.offWhite);
+    // Sandwich name — above the board
+    drawText(data.name.toUpperCase(), GW / 2, 90, 14, COLORS.offWhite);
 
-    // Flavor text
+    // Flavor text — above the board
     ctx.font = '8px "Press Start 2P", cursive';
     ctx.fillStyle = '#888';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    // Word wrap
     const words = data.flavor.split(' ');
     let line = '';
-    let lineY = 165;
+    let lineY = 120;
     for (const word of words) {
         const test = line + (line ? ' ' : '') + word;
         if (ctx.measureText(test).width > GW - 60) {
             ctx.fillText(line, GW / 2, lineY);
             line = word;
-            lineY += 16;
+            lineY += 14;
         } else {
             line = test;
         }
     }
     if (line) ctx.fillText(line, GW / 2, lineY);
+
+    // "TAP TO SKIP" hint — fades in after sandwich arrives
+    if (introTimer > 50) {
+        const fadeIn = Math.min(1, (introTimer - 50) / 20);
+        ctx.save();
+        ctx.globalAlpha = fadeIn * 0.5;
+        ctx.font = '6px "Press Start 2P", cursive';
+        ctx.fillStyle = '#AAA';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('TAP TO SKIP', GW / 2, GH - 30);
+        ctx.restore();
+    }
 
     // Sandwich sliding in
     if (sandwich.visible) {
@@ -2477,19 +2517,29 @@ function renderBoard() {
 function renderGame() {
     renderBoard();
 
-    // HUD
+    const config = dailyMode ? dailyConfig : ROUND_CONFIG[currentRound];
+    const sandIdx = dailyMode ? dailyConfig.sandwichIdx : (config.sandwichIdx !== undefined ? config.sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx);
+    const data = SANDWICHES[sandIdx];
+
+    // HUD — round indicator + sandwich name above board
     if (!dailyMode) {
         drawText('ROUND ' + (currentRound + 1) + '/5', GW / 2, 30, 10, COLORS.csYellow);
     } else {
         drawText('DAILY CUT', GW / 2, 30, 10, COLORS.csYellow);
     }
 
-    // Timer bar
+    // Persistent sandwich name above board
+    ctx.save();
+    ctx.globalAlpha = 0.6;
+    drawText(data.name.toUpperCase(), GW / 2, 55, 8, COLORS.offWhite);
+    ctx.restore();
+
+    // Timer bar — below sandwich name
     if (timerActive && timerRemaining > 0) {
         const pct = timerRemaining / timerTotal;
         const barW = GW - 100;
         const barX = 50;
-        const barY = 50;
+        const barY = 70;
 
         ctx.fillStyle = '#333';
         ctx.fillRect(barX, barY, barW, 8);
@@ -2524,8 +2574,19 @@ function renderGame() {
 
     // Sandwich
     if (sandwich.visible) {
-        const sandIdx = dailyMode ? dailyConfig.sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
         drawSandwich(sandwich, sandIdx);
+    }
+
+    // "GO!" flash
+    if (goTimer > 0) {
+        const progress = goTimer / 30;
+        const scale = 1 + (1 - progress) * 0.3;
+        ctx.save();
+        ctx.globalAlpha = progress;
+        ctx.translate(GW / 2, 296);
+        ctx.scale(scale, scale);
+        drawTextOutline('GO!', 0, 0, 28, COLORS.csYellow, '#000');
+        ctx.restore();
     }
 }
 
