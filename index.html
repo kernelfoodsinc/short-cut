@@ -241,7 +241,6 @@ let frameCount = 0;
 let lastTime = 0;
 let dt = 1 / 60; // delta time in seconds, default 60fps
 let playCount = 0;
-let sessionShowcaseShown = false;
 let shortCallShown = false;
 
 // Streak
@@ -283,6 +282,8 @@ let worstRound = 0;
 
 // Menu showcase
 let menuShowTimer = 0;
+let showcaseSandwichIdx = 0;
+let showcaseSeenList = [];
 
 // Reward state
 let rewardButtons = [];
@@ -1208,12 +1209,12 @@ function handlePointerDown(cx, cy) {
     }
 
     if (gameState === 'menu_show') {
-        // Check location link tap
-        if (buttons.locations) {
-            const b = buttons.locations;
+        // Check order button tap
+        if (buttons.orderNow) {
+            const b = buttons.orderNow;
             if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
-                Analytics.locationLinkClick();
-                window.open('https://counterservice.com/locations', '_blank');
+                Analytics.orderLinkClick();
+                window.open('https://counterservice.com/', '_blank');
                 return;
             }
         }
@@ -1479,21 +1480,17 @@ function advanceToNextRound() {
 }
 
 function advanceFromResults() {
-    if (!sessionShowcaseShown && playCount <= 1) {
-        sessionShowcaseShown = true;
-        gameState = 'menu_show';
-        menuShowTimer = frameCount;
-        // Find best sandwich
-        let bestIdx = 0;
-        for (let i = 1; i < roundScores.length; i++) {
-            if (roundScores[i] > roundScores[bestIdx]) bestIdx = i;
-        }
-        buttons.bestSandwich = bestIdx;
-        Analytics.menuShowcaseView(SANDWICHES[ROUND_CONFIG[bestIdx].sandwichIdx].fullName);
-    } else {
-        gameState = 'reward';
-        setupRewardScreen();
+    gameState = 'menu_show';
+    menuShowTimer = frameCount;
+    // Random sandwich, no repeats until all 5 seen
+    if (showcaseSeenList.length >= SANDWICHES.length) showcaseSeenList = [];
+    const available = [];
+    for (let i = 0; i < SANDWICHES.length; i++) {
+        if (showcaseSeenList.indexOf(i) === -1) available.push(i);
     }
+    showcaseSandwichIdx = available[Math.floor(Math.random() * available.length)];
+    showcaseSeenList.push(showcaseSandwichIdx);
+    Analytics.menuShowcaseView(SANDWICHES[showcaseSandwichIdx].fullName);
 }
 
 function advanceFromMenuShow() {
@@ -2873,39 +2870,79 @@ function renderResults() {
 }
 
 function renderMenuShow() {
-    ctx.fillStyle = '#12121A';
+    // Kraft paper background
+    ctx.fillStyle = '#C4A87C';
     ctx.fillRect(0, 0, GW, GH);
 
-    drawText('OUR KITCHEN CUTS', GW / 2, 60, 10, COLORS.csYellow);
-    drawText('THEM WITH CARE.', GW / 2, 80, 10, COLORS.csYellow);
-    drawText('CAN YOU?', GW / 2, 100, 10, COLORS.csYellow);
-
-    // Best sandwich
-    const bestIdx = buttons.bestSandwich || 0;
-    const sandIdx = ROUND_CONFIG[bestIdx].sandwichIdx;
-    const data = SANDWICHES[sandIdx];
-
-    // Draw sandwich at 2x
+    // Paper grain
     ctx.save();
-    ctx.translate(GW / 2, 230);
-    ctx.scale(1.5, 1.5);
-    const tempSw = { x: 0, y: 0, w: 160, h: 64, rotation: 0, visible: true };
-    drawSandwich(tempSw, sandIdx);
+    ctx.globalAlpha = 0.06;
+    for (let i = 0; i < 400; i++) {
+        const gx = Math.random() * GW;
+        const gy = Math.random() * GH;
+        ctx.fillStyle = Math.random() > 0.5 ? '#A08050' : '#D8C4A0';
+        ctx.fillRect(gx, gy, Math.random() * 3 + 1, 1);
+    }
     ctx.restore();
 
-    // Info
-    drawText(data.fullName, GW / 2, 320, 10, COLORS.offWhite);
-    drawText(data.price, GW / 2, 345, 8, COLORS.csYellow);
+    // Black border
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(10, 10, GW - 20, GH - 20);
 
-    drawText('Available at all CS locations', GW / 2, 385, 7, '#888');
-    drawText('4 spots in NYC', GW / 2, 405, 7, '#888');
-    drawText('counterservice.com/locations', GW / 2, 425, 6, '#6688AA');
-    buttons.locations = { x: 40, y: 415, w: GW - 80, h: 24 };
+    // Headline
+    drawText('SHORTS ARE HERE', GW / 2, 50, 12, '#000');
+
+    // Subtitle — word wrap
+    ctx.font = '7px "Press Start 2P", cursive';
+    ctx.fillStyle = '#555';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('A small sandwich for when', GW / 2, 75);
+    ctx.fillText('you want a smaller sandwich', GW / 2, 90);
+
+    const data = SANDWICHES[showcaseSandwichIdx];
+
+    // Thin divider
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(60, 108);
+    ctx.lineTo(GW - 60, 108);
+    ctx.stroke();
+
+    // Sandwich name — prominent
+    drawText(data.fullName.toUpperCase(), GW / 2, 132, 11, '#000');
+
+    // Draw sandwich placeholder (swap to real photo later)
+    ctx.save();
+    ctx.translate(GW / 2, 245);
+    ctx.scale(1.6, 1.6);
+    const tempSw = { x: 0, y: 0, w: 160, h: 64, rotation: 0, visible: true };
+    drawSandwich(tempSw, showcaseSandwichIdx);
+    ctx.restore();
+
+    // Pickup & Delivery
+    drawText('Pickup & Delivery in NYC', GW / 2, 350, 7, '#000');
+
+    // ORDER NOW button — Baron Red
+    const btnW = GW - 80;
+    const btnH = 40;
+    const btnX = 40;
+    const btnY = 375;
+    ctx.fillStyle = '#E1625D';
+    drawRoundedRect(btnX, btnY, btnW, btnH, 4);
+    drawText('ORDER ON COUNTERSERVICE.COM', GW / 2, btnY + btnH / 2, 7, '#FFF');
+    buttons.orderNow = { x: btnX, y: btnY, w: btnW, h: btnH };
+
+    // Stacked CS logo
+    drawText('cOUNTEr', GW / 2, 440, 7, '#000');
+    drawText('SERVICE', GW / 2, 454, 7, '#000');
 
     // Tap to continue
     const flash = Math.sin(frameCount * 0.08) * 0.3 + 0.7;
     ctx.globalAlpha = flash;
-    drawText('TAP TO CONTINUE', GW / 2, 475, 8, '#888');
+    drawText('TAP TO CONTINUE', GW / 2, GH - 25, 7, '#666');
     ctx.globalAlpha = 1;
 }
 
