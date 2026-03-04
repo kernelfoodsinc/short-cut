@@ -173,7 +173,7 @@ let spritesLoaded = false;
 function loadSprite(src) {
     return new Promise((resolve, reject) => {
         const img = new Image();
-        img.crossOrigin = 'anonymous';
+        if (location.protocol !== 'file:') img.crossOrigin = 'anonymous';
         img.onload = () => resolve(img);
         img.onerror = () => resolve(null); // fallback to procedural on error
         img.src = src;
