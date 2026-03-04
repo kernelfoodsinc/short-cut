@@ -280,6 +280,8 @@ const SANDWICHES = [
     }
 ];
 
+const SANDWICH_NAMES = SANDWICHES.map(s => s.name);
+
 // ============================================
 // ROUND CONFIGS
 // ============================================
@@ -385,6 +387,42 @@ let cachedRectTime = 0;
 // Cached offscreen canvases
 let boardCanvas = null;
 let kitchenCanvas = null;
+let kraftPaperCanvas = null;
+
+// Cached average score
+let cachedAvg = 0;
+let cachedAvgLen = -1;
+
+function getAvgScore() {
+    if (roundScores.length === 0) return 0;
+    if (roundScores.length !== cachedAvgLen) {
+        cachedAvg = getAvgScore();
+        cachedAvgLen = roundScores.length;
+    }
+    return cachedAvg;
+}
+
+// Cached toast width
+let toastWidth = 0;
+
+function buildKraftPaper() {
+    if (kraftPaperCanvas) return kraftPaperCanvas;
+    const c = document.createElement('canvas');
+    c.width = GW;
+    c.height = GH;
+    const k = c.getContext('2d');
+    k.fillStyle = '#C4A87C';
+    k.fillRect(0, 0, GW, GH);
+    k.globalAlpha = 0.06;
+    for (let i = 0; i < 400; i++) {
+        const gx = Math.random() * GW;
+        const gy = Math.random() * GH;
+        k.fillStyle = Math.random() > 0.5 ? '#A08050' : '#D8C4A0';
+        k.fillRect(gx, gy, Math.random() * 3 + 1, 1);
+    }
+    kraftPaperCanvas = c;
+    return c;
+}
 
 // ============================================
 // ANALYTICS
@@ -1474,7 +1512,7 @@ function startLunchRush() {
     if (streakData.lastDate !== today) {
         if (streakData.lastDate === getYesterdayDateStr()) {
             streakData.streak++;
-        } else if (streakData.lastDate !== today) {
+        } else {
             streakData.streak = 1;
         }
         streakData.lastDate = today;
@@ -1573,7 +1611,7 @@ function advanceToNextRound() {
         for (let i = 1; i < roundScores.length; i++) {
             if (roundScores[i] < roundScores[worstRound]) worstRound = i;
         }
-        const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+        const avg = getAvgScore();
         const rank = getRankTitle(avg);
         const { code } = getCouponInfo(avg);
         Analytics.gameComplete(avg, rank, code, lunchRushMode ? 'lunch_rush' : 'main');
@@ -1617,7 +1655,7 @@ function advanceFromMenuShow() {
 }
 
 function setupRewardScreen() {
-    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const avg = getAvgScore();
     const { rank, code, desc } = getCouponInfo(avg);
     Analytics.couponReveal(code, rank);
 
@@ -1761,6 +1799,8 @@ function saveLunchRushDayStreak(data) {
 function showToast(msg) {
     toastMessage = msg;
     toastTimer = 90;
+    ctx.font = '12px "Press Start 2P", cursive';
+    toastWidth = ctx.measureText(msg).width + 30;
     AudioSystem.uiSelect();
 }
 
@@ -1773,10 +1813,10 @@ function getPlayerShareUrl() {
 }
 
 function getShareText() {
-    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const avg = getAvgScore();
     const rank = getRankTitle(avg);
     let text = '\u2702\uFE0F Short Cut \uD83E\uDD6A\n';
-    const names = ['Chicken Club', 'The Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
+    const names = SANDWICH_NAMES;
     for (let i = 0; i < roundScores.length; i++) {
         const name = names[i].padEnd(16);
         text += name + roundScores[i].toFixed(1) + '%\n';
@@ -1839,7 +1879,7 @@ async function generateShareCard() {
     cx.stroke();
 
     // Score bars
-    const names = ['Chicken Club', 'The Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
+    const names = SANDWICH_NAMES;
     const barY = 260;
     const barH = 50;
     const barSpacing = 100;
@@ -1887,7 +1927,7 @@ async function generateShareCard() {
     cx.stroke();
 
     // Average + Rank
-    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const avg = getAvgScore();
     const rank = getRankTitle(avg);
 
     cx.textAlign = 'center';
@@ -1930,7 +1970,7 @@ async function generateShareCard() {
 }
 
 async function shareGame() {
-    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const avg = getAvgScore();
     Analytics.shareClick(avg, 'native');
 
     const shareText = getShareText();
@@ -1987,7 +2027,7 @@ async function shareGame() {
 }
 
 async function saveScoreCard() {
-    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const avg = getAvgScore();
     Analytics.saveImage(avg);
 
     try {
@@ -2084,7 +2124,7 @@ function copyToClipboard(text) {
 // ============================================
 
 function handleRewardTap(cx, cy) {
-    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const avg = getAvgScore();
     const { code } = getCouponInfo(avg);
 
     // Check coupon code tap area
@@ -2351,10 +2391,8 @@ function render() {
         const alpha = toastTimer > 20 ? 1 : toastTimer / 20;
         ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.font = '12px "Press Start 2P", cursive';
-        const mw = ctx.measureText(toastMessage).width + 30;
         ctx.fillStyle = 'rgba(0,0,0,0.8)';
-        ctx.fillRect(GW / 2 - mw / 2, GH - 70, mw, 30);
+        ctx.fillRect(GW / 2 - toastWidth / 2, GH - 70, toastWidth, 30);
         drawText(toastMessage, GW / 2, GH - 55, 12, COLORS.csYellow);
         ctx.restore();
     }
@@ -3029,20 +3067,8 @@ function renderShortCall() {
 }
 
 function renderResults() {
-    // Kraft paper background
-    ctx.fillStyle = '#C4A87C';
-    ctx.fillRect(0, 0, GW, GH);
-
-    // Paper grain
-    ctx.save();
-    ctx.globalAlpha = 0.06;
-    for (let i = 0; i < 400; i++) {
-        const gx = Math.random() * GW;
-        const gy = Math.random() * GH;
-        ctx.fillStyle = Math.random() > 0.5 ? '#A08050' : '#D8C4A0';
-        ctx.fillRect(gx, gy, Math.random() * 3 + 1, 1);
-    }
-    ctx.restore();
+    // Kraft paper background (cached)
+    ctx.drawImage(buildKraftPaper(), 0, 0);
 
     // Black border
     ctx.strokeStyle = '#000';
@@ -3055,7 +3081,7 @@ function renderResults() {
     drawText('SERVICE', GW / 2, 72, 8, '#000');
 
     // Score bars
-    const names = ['Chicken Club', 'The Smokeshow', 'Buffalo Chicken', 'The Baron', 'Chicken Caesar'];
+    const names = SANDWICH_NAMES;
     const barStartY = 100;
     const barH = 20;
     const barSpacing = 52;
@@ -3095,7 +3121,7 @@ function renderResults() {
 
     // Average
     if (resultsPhase >= 1) {
-        const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+        const avg = getAvgScore();
         const displayAvg = resultsPhase >= 2 ? avg : avg * resultsAnimProgress;
 
         const avgY = barStartY + 5 * barSpacing + 10;
@@ -3139,20 +3165,8 @@ function renderResults() {
 }
 
 function renderMenuShow() {
-    // Kraft paper background
-    ctx.fillStyle = '#C4A87C';
-    ctx.fillRect(0, 0, GW, GH);
-
-    // Paper grain
-    ctx.save();
-    ctx.globalAlpha = 0.06;
-    for (let i = 0; i < 400; i++) {
-        const gx = Math.random() * GW;
-        const gy = Math.random() * GH;
-        ctx.fillStyle = Math.random() > 0.5 ? '#A08050' : '#D8C4A0';
-        ctx.fillRect(gx, gy, Math.random() * 3 + 1, 1);
-    }
-    ctx.restore();
+    // Kraft paper background (cached)
+    ctx.drawImage(buildKraftPaper(), 0, 0);
 
     // Black border
     ctx.strokeStyle = '#000';
@@ -3211,27 +3225,15 @@ function renderMenuShow() {
 }
 
 function renderReward() {
-    // Kraft paper background
-    ctx.fillStyle = '#C4A87C';
-    ctx.fillRect(0, 0, GW, GH);
-
-    // Paper grain
-    ctx.save();
-    ctx.globalAlpha = 0.06;
-    for (let i = 0; i < 400; i++) {
-        const gx = Math.random() * GW;
-        const gy = Math.random() * GH;
-        ctx.fillStyle = Math.random() > 0.5 ? '#A08050' : '#D8C4A0';
-        ctx.fillRect(gx, gy, Math.random() * 3 + 1, 1);
-    }
-    ctx.restore();
+    // Kraft paper background (cached)
+    ctx.drawImage(buildKraftPaper(), 0, 0);
 
     // Black border
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 3;
     ctx.strokeRect(10, 10, GW - 20, GH - 20);
 
-    const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
+    const avg = getAvgScore();
     const { rank, code, desc } = getCouponInfo(avg);
 
     // Calculate total content height to vertically center
@@ -3317,20 +3319,8 @@ function renderReward() {
 }
 
 function renderLunchRushDeath() {
-    // Kraft paper background
-    ctx.fillStyle = '#C4A87C';
-    ctx.fillRect(0, 0, GW, GH);
-
-    // Paper grain
-    ctx.save();
-    ctx.globalAlpha = 0.06;
-    for (let i = 0; i < 400; i++) {
-        const gx = Math.random() * GW;
-        const gy = Math.random() * GH;
-        ctx.fillStyle = Math.random() > 0.5 ? '#A08050' : '#D8C4A0';
-        ctx.fillRect(gx, gy, Math.random() * 3 + 1, 1);
-    }
-    ctx.restore();
+    // Kraft paper background (cached)
+    ctx.drawImage(buildKraftPaper(), 0, 0);
 
     // Black border
     ctx.strokeStyle = '#000';
@@ -3402,6 +3392,7 @@ function renderLunchRushDeath() {
         ctx.strokeStyle = '#5A4530';
         ctx.lineWidth = 2.5;
         ctx.lineCap = 'round';
+        ctx.beginPath();
 
         let tx = tallyStartX;
         for (let i = 0; i < shown; i++) {
@@ -3409,17 +3400,13 @@ function renderLunchRushDeath() {
             if (posInGroup === 4) {
                 // Diagonal strike-through across the previous 4
                 const strikeStartX = tx - 4 * (tallyW + tallyGap);
-                ctx.beginPath();
                 ctx.moveTo(strikeStartX - 2, tallyY + tallyH + 3);
                 ctx.lineTo(tx + tallyW + 2, tallyY - 3);
-                ctx.stroke();
             } else {
                 // Vertical tally mark with slight wobble
                 const wobble = ((i * 7 + 3) % 5 - 2) * 0.04;
-                ctx.beginPath();
                 ctx.moveTo(tx + tallyW / 2, tallyY);
                 ctx.lineTo(tx + tallyW / 2 + wobble * tallyH, tallyY + tallyH);
-                ctx.stroke();
                 tx += tallyW + tallyGap;
             }
 
@@ -3428,6 +3415,7 @@ function renderLunchRushDeath() {
                 tx += groupGap;
             }
         }
+        ctx.stroke();
         ctx.restore();
 
         // Overflow indicator
