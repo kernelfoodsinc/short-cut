@@ -470,8 +470,8 @@ const Analytics = {
     playAgain(prevScore, mode) {
         this.track('play_again', { previous_score: Math.round(prevScore * 10) / 10, mode });
     },
-    lunchRushStart() {
-        this.track('lunch_rush_start');
+    lunchRushStart(attemptNumber) {
+        this.track('lunch_rush_start', { attempt_number: attemptNumber });
     },
     lunchRushEnd(streak, bestToday) {
         this.track('lunch_rush_end', { streak, best_today: bestToday });
@@ -489,6 +489,30 @@ const Analytics = {
         this.track('referral_arrival', { ref_source: ref });
     }
 };
+
+// ============================================
+// DEBUG / VERIFICATION
+// ============================================
+
+// Call from console: verifyDeterminism()
+// Generates the Lunch Rush sequence twice and confirms they match.
+function verifyDeterminism(numCuts) {
+    numCuts = numCuts || 20;
+    const run1 = [], run2 = [];
+    for (let i = 0; i < numCuts; i++) {
+        const c1 = getLunchRushConfig(i);
+        const c2 = getLunchRushConfig(i);
+        run1.push({ cut: i, sandwich: SANDWICHES[c1.sandwichIdx].name, offset: c1.offsetX.toFixed(1), rot: c1.rotation.toFixed(1), timer: c1.timer.toFixed(1) });
+        run2.push({ cut: i, sandwich: SANDWICHES[c2.sandwichIdx].name, offset: c2.offsetX.toFixed(1), rot: c2.rotation.toFixed(1), timer: c2.timer.toFixed(1) });
+    }
+    let pass = true;
+    for (let i = 0; i < numCuts; i++) {
+        if (JSON.stringify(run1[i]) !== JSON.stringify(run2[i])) { pass = false; break; }
+    }
+    console.table(run1);
+    console.log(pass ? 'PASS: Both runs identical' : 'FAIL: Runs differ');
+    return pass;
+}
 
 // ============================================
 // HAPTICS
@@ -1530,7 +1554,7 @@ function startLunchRush() {
     lunchRushAttempts = data.attempts;
     saveLunchRushData(data);
 
-    Analytics.lunchRushStart();
+    Analytics.lunchRushStart(lunchRushAttempts);
     Analytics.gameStart('lunch_rush');
 }
 
@@ -3352,7 +3376,11 @@ function renderLunchRushDeath() {
     // Killing score
     if (lunchRushScores.length > 0) {
         const killingScore = lunchRushScores[lunchRushScores.length - 1];
-        drawText('Final cut: ' + killingScore.toFixed(1) + '%', GW / 2, 198, 8, '#555');
+        if (killingScore === 0) {
+            drawText("TIME'S UP", GW / 2, 198, 8, COLORS.baronRed);
+        } else {
+            drawText('Final cut: ' + killingScore.toFixed(1) + '%', GW / 2, 198, 8, '#555');
+        }
     }
 
     // Best today
@@ -3516,6 +3544,11 @@ function init() {
             if (streakData.lastDate === today || streakData.lastDate === getYesterdayDateStr()) {
                 lunchRushDayStreak = streakData.streak || 0;
             }
+        }
+        // Load today's best streak
+        const rushData = loadLunchRushData();
+        if (rushData && rushData.date === getTodayDateStr()) {
+            lunchRushBestToday = rushData.bestStreak || 0;
         }
     } catch(e) {}
 
