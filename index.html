@@ -3232,8 +3232,37 @@ function renderMenuShow() {
     // Sandwich name — prominent
     drawText(data.fullName.toUpperCase(), GW / 2, 132, 11, '#000');
 
-    // Side-view showcase
-    drawSideSprite(ctx, showcaseSandwichIdx, GW / 2, 240, 220);
+    // Side-view showcase — cut in half with gap
+    const showW = 220, showH = showW / 2.5;
+    const showCX = GW / 2, showCY = 240;
+    const halfGap = 10; // px between halves
+    const tilt = 0.06; // slight outward angle
+
+    if (hasSpriteFor(showcaseSandwichIdx)) {
+        const sprite = spriteMap[SANDWICHES[showcaseSandwichIdx].id].side;
+        const sw = sprite.width, sh = sprite.height;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        // Left half
+        ctx.save();
+        ctx.translate(showCX - showW / 4 - halfGap, showCY);
+        ctx.rotate(-tilt);
+        ctx.drawImage(sprite, 0, 0, sw / 2, sh, -showW / 4, -showH / 2, showW / 2, showH);
+        ctx.restore();
+
+        // Right half
+        ctx.save();
+        ctx.translate(showCX + showW / 4 + halfGap, showCY);
+        ctx.rotate(tilt);
+        ctx.drawImage(sprite, sw / 2, 0, sw / 2, sh, -showW / 4, -showH / 2, showW / 2, showH);
+        ctx.restore();
+
+        ctx.imageSmoothingEnabled = false;
+    } else {
+        // Fallback: just draw full procedural
+        drawSideSprite(ctx, showcaseSandwichIdx, showCX, showCY, showW);
+    }
 
     // Pickup & Delivery
     drawText('Pickup & Delivery in NYC', GW / 2, 350, 7, '#000');
