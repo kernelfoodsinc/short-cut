@@ -203,6 +203,26 @@ function hasSpriteFor(sandwichIdx) {
     return spriteMap[id] && spriteMap[id].side;
 }
 
+function hasCrossSpriteFor(sandwichIdx) {
+    if (!USE_SPRITES || !spritesLoaded) return false;
+    const id = SANDWICHES[sandwichIdx].id;
+    return spriteMap[id] && spriteMap[id].cross;
+}
+
+function drawCrossSectionSprite(targetCtx, sandwichIdx, cx, cy, size) {
+    if (hasCrossSpriteFor(sandwichIdx)) {
+        const sprite = spriteMap[SANDWICHES[sandwichIdx].id].cross;
+        // Use smooth rendering for heavy downscales to avoid pixelated artifacts
+        targetCtx.imageSmoothingEnabled = true;
+        targetCtx.imageSmoothingQuality = 'high';
+        targetCtx.drawImage(sprite, cx - size / 2, cy - size / 2, size, size);
+        targetCtx.imageSmoothingEnabled = false;
+    } else {
+        // Fallback: draw procedural cross-section
+        drawCrossSection(cx - size / 2, cy - size / 2, size, size, sandwichIdx);
+    }
+}
+
 // ============================================
 // SANDWICH DATA
 // ============================================
@@ -346,6 +366,7 @@ let lunchRushBestToday = 0;
 let lunchRushAttempts = 0;
 let lunchRushScores = [];
 let lunchRushDayStreak = 0;
+let lunchRushKillingSandwich = 0;
 
 // Particles
 let particles = [];
@@ -1560,6 +1581,7 @@ function advanceToNextRound() {
         gameState = 'lunch_rush_death';
         lunchRushStreak = roundScores.length - 1; // cuts survived (last one killed you)
         lunchRushScores = roundScores.slice();
+        lunchRushKillingSandwich = getLunchRushConfig(currentRound).sandwichIdx;
 
         // Persist streak data
         const dateStr = getTodayDateStr();
@@ -1830,16 +1852,8 @@ async function generateShareCard() {
         const sandIdx = ROUND_CONFIG[i].sandwichIdx;
         const dominant = SANDWICHES[sandIdx].dominant;
 
-        // Mini sandwich from the game (swap ctx temporarily)
-        const origCtx = ctx;
-        ctx = cx;
-        cx.save();
-        cx.translate(barX - 55, y + barH / 2);
-        cx.scale(0.5, 0.5);
-        const miniSw = { x: 0, y: 0, w: 160, h: 64, rotation: 0 };
-        drawSandwich(miniSw, sandIdx);
-        cx.restore();
-        ctx = origCtx;
+        // Cross-section thumbnail
+        drawCrossSectionSprite(cx, sandIdx, barX - 55, y + barH / 2, 70);
 
         // Name
         cx.font = '14px "Press Start 2P", cursive';
@@ -2012,42 +2026,52 @@ async function saveScoreCard() {
 // ============================================
 
 function getLunchRushShareText() {
-    let text = '\uD83D\uDD2A Lunch Rush \uD83E\uDD56\n';
-    text += lunchRushStreak + (lunchRushStreak === 1 ? ' cut' : ' cuts') + '\n';
-    for (let i = 0; i < lunchRushScores.length; i++) {
-        const s = lunchRushScores[i];
-        if (s >= 90) text += '\uD83D\uDFE2';
-        else if (s >= 80) text += '\uD83D\uDFE1';
-        else if (s >= 70) text += '\uD83D\uDFE0';
-        else text += '\uD83D\uDD34';
-    }
-    text += '\n' + GAME_URL;
-    return text;
+    return '\uD83D\uDD2A Lunch Rush \u2014 ' + lunchRushStreak + (lunchRushStreak === 1 ? ' cut' : ' cuts') + '\n' + GAME_URL;
 }
 
-async function shareLunchRush() {
+function shareLunchRush() {
     const shareText = getLunchRushShareText();
     Analytics.shareClick(lunchRushStreak, 'lunch_rush');
 
-    let clipboardSuccess = false;
-    try {
-        await navigator.clipboard.writeText(shareText);
-        clipboardSuccess = true;
-    } catch(e) {
-        try {
-            const ta = document.createElement('textarea');
-            ta.value = shareText;
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.focus();
-            ta.select();
-            clipboardSuccess = document.execCommand('copy');
-            document.body.removeChild(ta);
-        } catch(e2) { /* ignore */ }
+    // Try native share first (mobile)
+    if (navigator.share) {
+        navigator.share({ text: shareText }).then(function() {
+            Analytics.shareSuccess(lunchRushStreak, 'lunch_rush');
+        }).catch(function() {
+            // User cancelled or failed — try clipboard
+            copyToClipboard(shareText);
+        });
+        return;
     }
 
-    if (clipboardSuccess) {
+    copyToClipboard(shareText);
+}
+
+function copyToClipboard(text) {
+    // textarea fallback first — works in more contexts than clipboard API
+    let success = false;
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        success = document.execCommand('copy');
+        document.body.removeChild(ta);
+    } catch(e) { /* fallthrough */ }
+
+    if (!success && navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(function() {
+            showToast('COPIED!');
+            Analytics.shareSuccess(lunchRushStreak, 'lunch_rush');
+        }).catch(function() {
+            showToast('SHARE FAILED');
+        });
+        return;
+    }
+
+    if (success) {
         showToast('COPIED!');
         Analytics.shareSuccess(lunchRushStreak, 'lunch_rush');
     } else {
@@ -3047,13 +3071,8 @@ function renderResults() {
         const sandIdx = ROUND_CONFIG[i].sandwichIdx;
         const dominant = SANDWICHES[sandIdx].dominant;
 
-        // Mini sandwich from the game
-        ctx.save();
-        ctx.translate(barX - 25, y + barH / 2);
-        ctx.scale(0.2, 0.2);
-        const miniSw = { x: 0, y: 0, w: 160, h: 64, rotation: 0 };
-        drawSandwich(miniSw, sandIdx);
-        ctx.restore();
+        // Cross-section thumbnail
+        drawCrossSectionSprite(ctx, sandIdx, barX - 22, y + barH / 2, 36);
 
         // Name
         drawText(names[i], barX, y - 12, 7, '#000', 'left');
@@ -3164,13 +3183,8 @@ function renderMenuShow() {
     // Sandwich name — prominent
     drawText(data.fullName.toUpperCase(), GW / 2, 132, 11, '#000');
 
-    // Draw sandwich placeholder (swap to real photo later)
-    ctx.save();
-    ctx.translate(GW / 2, 245);
-    ctx.scale(1.6, 1.6);
-    const tempSw = { x: 0, y: 0, w: 160, h: 64, rotation: 0, visible: true };
-    drawSandwich(tempSw, showcaseSandwichIdx);
-    ctx.restore();
+    // Cross-section showcase
+    drawCrossSectionSprite(ctx, showcaseSandwichIdx, GW / 2, 240, 180);
 
     // Pickup & Delivery
     drawText('Pickup & Delivery in NYC', GW / 2, 350, 7, '#000');
@@ -3324,66 +3338,110 @@ function renderLunchRushDeath() {
     ctx.strokeRect(10, 10, GW - 20, GH - 20);
 
     // Title
-    drawTextOutline("COULDN'T", GW / 2, 48, 20, COLORS.baronRed, '#000');
-    drawTextOutline('CUT IT', GW / 2, 78, 20, COLORS.baronRed, '#000');
+    drawTextOutline("COULDN'T", GW / 2, 38, 20, COLORS.baronRed, '#000');
+    drawTextOutline('CUT IT', GW / 2, 66, 20, COLORS.baronRed, '#000');
 
-    // Streak count large
-    drawText(lunchRushStreak + (lunchRushStreak === 1 ? ' CUT' : ' CUTS'), GW / 2, 115, 20, '#000');
+    // Killer sandwich hero shot — tilted like it fell off the board
+    const killSandwichW = 180, killSandwichH = 72;
+    ctx.save();
+    ctx.translate(GW / 2, 126);
+    ctx.rotate(-0.12); // slight tilt
+    if (hasSpriteFor(lunchRushKillingSandwich)) {
+        const sprite = spriteMap[SANDWICHES[lunchRushKillingSandwich].id].side;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(sprite, -killSandwichW / 2, -killSandwichH / 2, killSandwichW, killSandwichH);
+        ctx.imageSmoothingEnabled = false;
+    } else {
+        const fakeSw = { x: 0, y: 0, w: killSandwichW, h: killSandwichH, rotation: 0, visible: true };
+        drawSandwichProcedural(fakeSw, lunchRushKillingSandwich);
+    }
+    ctx.restore();
+    drawText(SANDWICHES[lunchRushKillingSandwich].name, GW / 2, 170, 7, '#555');
 
-    // The killing score
+    // Streak count
+    drawText(lunchRushStreak + (lunchRushStreak === 1 ? ' CUT' : ' CUTS'), GW / 2, 200, 20, '#000');
+
+    // Killing score
     if (lunchRushScores.length > 0) {
         const killingScore = lunchRushScores[lunchRushScores.length - 1];
-        drawText('Final cut: ' + killingScore.toFixed(1) + '%', GW / 2, 155, 8, '#555');
+        drawText('Final cut: ' + killingScore.toFixed(1) + '%', GW / 2, 228, 8, '#555');
     }
 
     // Best today
-    drawText('BEST TODAY: ' + lunchRushBestToday, GW / 2, 190, 9, '#000');
+    drawText('BEST TODAY: ' + lunchRushBestToday, GW / 2, 252, 9, '#000');
 
     // Near-miss motivator
+    let infoY = 272;
     if (lunchRushBestToday > 0 && lunchRushStreak >= lunchRushBestToday - 1 && lunchRushStreak < lunchRushBestToday) {
-        drawText('1 AWAY FROM YOUR BEST!', GW / 2, 215, 7, COLORS.baronRed);
+        drawText('1 AWAY FROM YOUR BEST!', GW / 2, infoY, 7, COLORS.baronRed);
+        infoY += 18;
     } else if (lunchRushStreak >= lunchRushBestToday && lunchRushStreak > 0) {
-        drawText('NEW PERSONAL BEST!', GW / 2, 215, 7, COLORS.baronRed);
+        drawText('NEW PERSONAL BEST!', GW / 2, infoY, 7, COLORS.baronRed);
+        infoY += 18;
     }
 
     // Day streak
     if (lunchRushDayStreak > 1) {
-        drawText('DAY ' + lunchRushDayStreak + ' STREAK', GW / 2, 240, 7, '#555');
+        drawText('DAY ' + lunchRushDayStreak + ' STREAK', GW / 2, infoY, 7, '#555');
     }
 
-    // Score sequence visualization — colored dots (canvas fillRect squares)
-    if (lunchRushScores.length > 0) {
-        const dotSize = 8;
-        const dotGap = 4;
-        const maxDotsPerRow = Math.floor((GW - 60) / (dotSize + dotGap));
-        const totalDots = lunchRushScores.length;
-        const rows = Math.ceil(totalDots / maxDotsPerRow);
-        const startY = 265;
+    // Tally marks — groups of 5 scratched into kraft paper, capped at 30
+    const survived = lunchRushStreak; // cuts survived (excluding the failed one)
+    if (survived > 0) {
+        const tallyH = 20;
+        const tallyW = 3;
+        const tallyGap = 5;
+        const groupGap = 14;
+        const maxShow = 30;
+        const shown = Math.min(survived, maxShow);
+        const groups = Math.ceil(shown / 5);
+        const totalW = groups * (5 * (tallyW + tallyGap) - tallyGap + groupGap) - groupGap;
+        const maxW = GW - 60;
+        const tallyStartX = (GW - Math.min(totalW, maxW)) / 2;
+        const tallyY = 308;
 
-        for (let r = 0; r < rows; r++) {
-            const rowStart = r * maxDotsPerRow;
-            const rowEnd = Math.min(rowStart + maxDotsPerRow, totalDots);
-            const rowCount = rowEnd - rowStart;
-            const rowW = rowCount * (dotSize + dotGap) - dotGap;
-            const rowX = (GW - rowW) / 2;
+        ctx.save();
+        ctx.strokeStyle = '#5A4530';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
 
-            for (let i = rowStart; i < rowEnd; i++) {
-                const s = lunchRushScores[i];
-                let dotColor;
-                if (s >= 90) dotColor = '#4CAF50';      // green
-                else if (s >= 80) dotColor = '#FFC107';  // yellow
-                else if (s >= 70) dotColor = '#FF9800';  // orange
-                else dotColor = '#F44336';               // red
-                ctx.fillStyle = dotColor;
-                const dx = rowX + (i - rowStart) * (dotSize + dotGap);
-                ctx.fillRect(dx, startY + r * (dotSize + dotGap), dotSize, dotSize);
+        let tx = tallyStartX;
+        for (let i = 0; i < shown; i++) {
+            const posInGroup = i % 5;
+            if (posInGroup === 4) {
+                // Diagonal strike-through across the previous 4
+                const strikeStartX = tx - 4 * (tallyW + tallyGap);
+                ctx.beginPath();
+                ctx.moveTo(strikeStartX - 2, tallyY + tallyH + 3);
+                ctx.lineTo(tx + tallyW + 2, tallyY - 3);
+                ctx.stroke();
+            } else {
+                // Vertical tally mark with slight wobble
+                const wobble = ((i * 7 + 3) % 5 - 2) * 0.04;
+                ctx.beginPath();
+                ctx.moveTo(tx + tallyW / 2, tallyY);
+                ctx.lineTo(tx + tallyW / 2 + wobble * tallyH, tallyY + tallyH);
+                ctx.stroke();
+                tx += tallyW + tallyGap;
             }
+
+            // Group gap after every 5
+            if (posInGroup === 4 && i < shown - 1) {
+                tx += groupGap;
+            }
+        }
+        ctx.restore();
+
+        // Overflow indicator
+        if (survived > maxShow) {
+            drawText('+' + (survived - maxShow), tx + 10, tallyY + tallyH / 2, 8, '#5A4530');
         }
     }
 
     // Share button — Baron Red
     const shareBtnW = 160, shareBtnH = 32;
-    const shareBtnX = GW / 2 - shareBtnW / 2, shareBtnY = 330;
+    const shareBtnX = GW / 2 - shareBtnW / 2, shareBtnY = 355;
     ctx.fillStyle = '#E1625D';
     drawRoundedRect(shareBtnX, shareBtnY, shareBtnW, shareBtnH, 4);
     drawText('SHARE', GW / 2, shareBtnY + shareBtnH / 2, 9, '#FFF');
@@ -3392,12 +3450,12 @@ function renderLunchRushDeath() {
     // TAP TO TRY AGAIN
     const flash = Math.sin(frameCount * 0.08) * 0.3 + 0.7;
     ctx.globalAlpha = flash;
-    drawText('TAP TO TRY AGAIN', GW / 2, 410, 10, '#000');
+    drawText('TAP TO TRY AGAIN', GW / 2, 425, 10, '#000');
     ctx.globalAlpha = 1;
 
     // EXIT (small)
     const exitBtnW = 80, exitBtnH = 24;
-    const exitBtnX = GW / 2 - exitBtnW / 2, exitBtnY = 450;
+    const exitBtnX = GW / 2 - exitBtnW / 2, exitBtnY = 460;
     ctx.save();
     ctx.globalAlpha = 0.5;
     drawText('EXIT', GW / 2, exitBtnY + exitBtnH / 2, 7, '#555');
