@@ -396,7 +396,7 @@ let cachedAvgLen = -1;
 function getAvgScore() {
     if (roundScores.length === 0) return 0;
     if (roundScores.length !== cachedAvgLen) {
-        cachedAvg = getAvgScore();
+        cachedAvg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
         cachedAvgLen = roundScores.length;
     }
     return cachedAvg;
