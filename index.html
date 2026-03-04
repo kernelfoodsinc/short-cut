@@ -161,6 +161,49 @@ const COLORS = {
 const GAME_URL = 'https://games.counterservice.com/short-cut/';
 
 // ============================================
+// SPRITE SYSTEM
+// ============================================
+
+const USE_SPRITES = true;
+
+// Sprite map: sandwichId → { side: Image, cross: Image }
+const spriteMap = {};
+let spritesLoaded = false;
+
+function loadSprite(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null); // fallback to procedural on error
+        img.src = src;
+    });
+}
+
+async function loadAllSprites() {
+    // For now, chicken club sprites are used for all sandwiches
+    const sideSrc = 'sprites/chicken-club-side.png';
+    const crossSrc = 'sprites/chicken-club-cross.png';
+
+    const [sideImg, crossImg] = await Promise.all([
+        loadSprite(sideSrc),
+        loadSprite(crossSrc)
+    ]);
+
+    // Map all sandwich IDs to the same sprites for testing
+    for (const sw of SANDWICHES) {
+        spriteMap[sw.id] = { side: sideImg, cross: crossImg };
+    }
+
+    spritesLoaded = !!(sideImg && crossImg);
+}
+
+function hasSpriteFor(sandwichIdx) {
+    if (!USE_SPRITES || !spritesLoaded) return false;
+    const id = SANDWICHES[sandwichIdx].id;
+    return spriteMap[id] && spriteMap[id].side;
+}
+
+// ============================================
 // SANDWICH DATA
 // ============================================
 
@@ -222,11 +265,11 @@ const SANDWICHES = [
 // ============================================
 
 const ROUND_CONFIG = [
-    { sandwichIdx: 0, offsetX: 0, rotation: 0, timer: 0, drift: false },
-    { sandwichIdx: 1, offsetRange: [-70, 70], rotation: 0, timer: 0, drift: false },
-    { sandwichIdx: 2, offsetX: 0, rotationRange: [15, 20], timer: 0, drift: false },
-    { sandwichIdx: 3, offsetX: 0, rotation: 0, timer: 3.0, drift: false },
-    { sandwichIdx: 4, offsetX: 0, rotation: 0, timer: 2.5, drift: true,
+    { sandwichIdx: 0, offsetX: 0, rotation: 0, timer: 5.0, drift: false },
+    { sandwichIdx: 1, offsetRange: [-70, 70], rotationRange: [5, 10], timer: 4.0, drift: false },
+    { sandwichIdx: 2, offsetRange: [-40, 40], rotationRange: [15, 20], timer: 3.5, drift: false },
+    { sandwichIdx: 3, offsetX: 0, rotation: 0, timer: 2.5, drift: false },
+    { sandwichIdx: 4, offsetX: 0, rotation: 0, timer: 2.0, drift: true,
       driftSpeed: 0.7, rotSpeed: 0.4 }
 ];
 
@@ -295,13 +338,14 @@ let toastTimer = 0;
 // Timeout auto-advance (frame-based)
 let timeoutAdvanceTimer = 0;
 
-// Daily Cut
-let dailyUnlocked = false;
-let dailyMode = false;
-let dailyAttempts = 0;
-let dailyBestScore = 0;
-let dailyScores = [];
-let dailyConfig = null;
+// Lunch Rush
+let lunchRushUnlocked = false;
+let lunchRushMode = false;
+let lunchRushStreak = 0;
+let lunchRushBestToday = 0;
+let lunchRushAttempts = 0;
+let lunchRushScores = [];
+let lunchRushDayStreak = 0;
 
 // Particles
 let particles = [];
@@ -367,8 +411,14 @@ const Analytics = {
     playAgain(prevScore, mode) {
         this.track('play_again', { previous_score: Math.round(prevScore * 10) / 10, mode });
     },
-    dailyCutStart(sw, config) {
-        this.track('daily_cut_start', { daily_sandwich: sw, daily_config: config });
+    lunchRushStart() {
+        this.track('lunch_rush_start');
+    },
+    lunchRushEnd(streak, bestToday) {
+        this.track('lunch_rush_end', { streak, best_today: bestToday });
+    },
+    lunchRushCut(cutNumber, sandwichName, score) {
+        this.track('lunch_rush_cut', { cut_number: cutNumber, sandwich_name: sandwichName, accuracy: Math.round(score * 10) / 10 });
     },
     orderLinkClick(tier) {
         this.track('order_link_click', { coupon_tier: tier });
@@ -698,6 +748,19 @@ function drawSandwich(sw, sandwichIdx, alpha) {
     if (sw.rotation) ctx.rotate(sw.rotation * Math.PI / 180);
 
     const hw = sw.w / 2, hh = sw.h / 2;
+
+    if (hasSpriteFor(sandwichIdx)) {
+        const sprite = spriteMap[SANDWICHES[sandwichIdx].id].side;
+        ctx.drawImage(sprite, -hw, -hh, sw.w, sw.h);
+    } else {
+        drawSandwichProcedural(sw, sandwichIdx);
+    }
+
+    ctx.restore();
+}
+
+function drawSandwichProcedural(sw, sandwichIdx) {
+    const hw = sw.w / 2, hh = sw.h / 2;
     const data = SANDWICHES[sandwichIdx];
 
     // Shadow
@@ -748,8 +811,6 @@ function drawSandwich(sw, sandwichIdx, alpha) {
     ctx.strokeStyle = COLORS.darkOutline;
     ctx.lineWidth = 1.5;
     drawRoundedRect(-hw, -hh, sw.w, sw.h, 12, true);
-
-    ctx.restore();
 }
 
 function drawRoundedRect(x, y, w, h, r, strokeOnly) {
@@ -961,7 +1022,7 @@ function renderParticles() {
 // ============================================
 
 function startCutAnimation(entry, exit, polyA, polyB, score) {
-    const sandwichIdx = dailyMode ? dailyConfig.sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
+    const sandwichIdx = lunchRushMode ? getLunchRushConfig(currentRound).sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
     const data = SANDWICHES[sandwichIdx];
 
     // Determine perpendicular direction for separation
@@ -1083,7 +1144,11 @@ function updateCutAnimation() {
         }
 
         scoreDisplay = { score, label, subtitle, color, timer: 90 };
-        Analytics.roundComplete(currentRound + 1, SANDWICHES[ROUND_CONFIG[currentRound].sandwichIdx].name, score, label);
+        const completeSandwichIdx = lunchRushMode ? getLunchRushConfig(currentRound).sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
+        Analytics.roundComplete(currentRound + 1, SANDWICHES[completeSandwichIdx].name, score, label);
+        if (lunchRushMode) {
+            Analytics.lunchRushCut(currentRound + 1, SANDWICHES[completeSandwichIdx].name, score);
+        }
 
         roundScores.push(score);
 
@@ -1157,11 +1222,11 @@ function handlePointerDown(cx, cy) {
     AudioSystem.resume();
 
     if (gameState === 'title') {
-        // Check daily cut button
-        if (dailyUnlocked && buttons.daily) {
+        // Check Lunch Rush button
+        if (lunchRushUnlocked && buttons.daily) {
             const b = buttons.daily;
             if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
-                startDailyCut();
+                startLunchRush();
                 AudioSystem.uiSelect();
                 return;
             }
@@ -1231,8 +1296,25 @@ function handlePointerDown(cx, cy) {
 
     if (gameState === 'timeout') return;
 
-    if (gameState === 'daily_result') {
-        gameState = 'title';
+    if (gameState === 'lunch_rush_death') {
+        // Check share button
+        if (buttons.lunchRushShare) {
+            const b = buttons.lunchRushShare;
+            if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
+                shareLunchRush();
+                return;
+            }
+        }
+        // Check exit button
+        if (buttons.lunchRushExit) {
+            const b = buttons.lunchRushExit;
+            if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
+                gameState = 'title';
+                return;
+            }
+        }
+        // Instant restart
+        startLunchRush();
         return;
     }
 }
@@ -1348,42 +1430,53 @@ function startMainGame() {
     currentRound = 0;
     roundScores = [];
     streak = 0;
-    dailyMode = false;
+    lunchRushMode = false;
     playCount++;
     introTimer = 0;
     Analytics.gameStart('main');
 }
 
-function startDailyCut() {
-    const dc = getDailyConfig();
-
-    // Check attempt limit
-    let data = loadDailyData();
-    if (data && data.date === dc.dateStr && data.attempts >= 3) {
-        showToast('3 ATTEMPTS USED!');
-        return;
-    }
-
-    dailyConfig = dc;
-    dailyMode = true;
+function startLunchRush() {
+    lunchRushMode = true;
+    lunchRushStreak = 0;
+    lunchRushScores = [];
     gameState = 'intro';
-    currentRound = dc.roundIdx;
+    currentRound = 0;
     roundScores = [];
+    streak = 0;
     introTimer = 0;
-    Analytics.dailyCutStart(SANDWICHES[dc.sandwichIdx].name, JSON.stringify(dc));
-    Analytics.gameStart('daily');
+
+    // Update day streak
+    const today = getTodayDateStr();
+    let streakData = loadLunchRushDayStreak();
+    if (!streakData) streakData = { lastDate: '', streak: 0 };
+    if (streakData.lastDate !== today) {
+        if (streakData.lastDate === getYesterdayDateStr()) {
+            streakData.streak++;
+        } else if (streakData.lastDate !== today) {
+            streakData.streak = 1;
+        }
+        streakData.lastDate = today;
+        saveLunchRushDayStreak(streakData);
+    }
+    lunchRushDayStreak = streakData.streak;
+
+    // Increment attempts
+    let data = loadLunchRushData();
+    const dateStr = getTodayDateStr();
+    if (!data || data.date !== dateStr) {
+        data = { date: dateStr, attempts: 0, bestStreak: 0 };
+    }
+    data.attempts++;
+    lunchRushAttempts = data.attempts;
+    saveLunchRushData(data);
+
+    Analytics.lunchRushStart();
+    Analytics.gameStart('lunch_rush');
 }
 
 function setupRound() {
-    const config = dailyMode ? {
-        sandwichIdx: dailyConfig.sandwichIdx,
-        offsetX: dailyConfig.offsetX,
-        rotation: dailyConfig.rotation,
-        timer: dailyConfig.timer,
-        drift: dailyConfig.drift,
-        driftSpeed: dailyConfig.driftSpeed || 0.7,
-        rotSpeed: dailyConfig.rotSpeed || 0.4
-    } : ROUND_CONFIG[currentRound];
+    const config = lunchRushMode ? getLunchRushConfig(currentRound) : ROUND_CONFIG[currentRound];
 
     sandwich.w = 160;
     sandwich.h = 64;
@@ -1432,8 +1525,9 @@ function setupRound() {
 }
 
 function nextRoundOrEnd() {
-    if (dailyMode) {
-        return 'daily_result';
+    if (lunchRushMode) {
+        const lastScore = roundScores[roundScores.length - 1];
+        return lastScore < 80 ? 'lunch_rush_death' : 'intro';
     }
     if (currentRound >= 4) {
         return 'results';
@@ -1461,21 +1555,23 @@ function advanceToNextRound() {
         const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
         const rank = getRankTitle(avg);
         const { code } = getCouponInfo(avg);
-        Analytics.gameComplete(avg, rank, code, dailyMode ? 'daily' : 'main');
-    } else if (next === 'daily_result') {
-        gameState = 'daily_result';
-        const dc = getDailyConfig();
-        let data = loadDailyData();
-        if (!data || data.date !== dc.dateStr) {
-            data = { date: dc.dateStr, attempts: 0, bestScore: 0, scores: [] };
+        Analytics.gameComplete(avg, rank, code, lunchRushMode ? 'lunch_rush' : 'main');
+    } else if (next === 'lunch_rush_death') {
+        gameState = 'lunch_rush_death';
+        lunchRushStreak = roundScores.length - 1; // cuts survived (last one killed you)
+        lunchRushScores = roundScores.slice();
+
+        // Persist streak data
+        const dateStr = getTodayDateStr();
+        let data = loadLunchRushData();
+        if (!data || data.date !== dateStr) {
+            data = { date: dateStr, attempts: lunchRushAttempts, bestStreak: 0 };
         }
-        data.attempts++;
-        const score = roundScores[0];
-        data.scores.push(score);
-        if (score > data.bestScore) data.bestScore = score;
-        dailyAttempts = data.attempts;
-        dailyBestScore = data.bestScore;
-        saveDailyData(data);
+        if (lunchRushStreak > data.bestStreak) data.bestStreak = lunchRushStreak;
+        lunchRushBestToday = data.bestStreak;
+        saveLunchRushData(data);
+
+        Analytics.lunchRushEnd(lunchRushStreak, lunchRushBestToday);
     }
 }
 
@@ -1503,9 +1599,9 @@ function setupRewardScreen() {
     const { rank, code, desc } = getCouponInfo(avg);
     Analytics.couponReveal(code, rank);
 
-    // Mark daily as unlocked
-    if (!dailyUnlocked) {
-        dailyUnlocked = true;
+    // Mark Lunch Rush as unlocked
+    if (!lunchRushUnlocked) {
+        lunchRushUnlocked = true;
         try { localStorage.setItem('shortcut_daily_unlocked', 'true'); } catch(e) {}
     }
 }
@@ -1523,7 +1619,7 @@ function getRankTitle(avg) {
 }
 
 // ============================================
-// DAILY CUT
+// LUNCH RUSH
 // ============================================
 
 function mulberry32(seed) {
@@ -1544,37 +1640,96 @@ function dateSeed(dateStr) {
     return hash;
 }
 
-let _dailyConfigCache = null;
-let _dailyConfigDate = '';
-function getDailyConfig() {
-    const today = new Date();
-    const dateStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
-    if (_dailyConfigCache && _dailyConfigDate === dateStr) return _dailyConfigCache;
-    _dailyConfigDate = dateStr;
-    const rng = mulberry32(dateSeed(dateStr));
-
-    const sandwichIdx = Math.floor(rng() * SANDWICHES.length);
-    const offsetX = (rng() - 0.5) * 80;
-    const rotation = (rng() - 0.5) * 40;
-    const timer = rng() < 0.5 ? 0 : 2.5 + rng() * 1;
-    const drift = rng() < 0.3;
-    const driftSpeed = 0.5 + rng() * 0.5;
-    const rotSpeed = 0.3 + rng() * 0.2;
-
-    _dailyConfigCache = { dateStr, sandwichIdx, offsetX, rotation, timer, drift, driftSpeed, rotSpeed, roundIdx: sandwichIdx };
-    return _dailyConfigCache;
+function getTodayDateStr() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
-function loadDailyData() {
+function getYesterdayDateStr() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function getLunchRushConfig(cutNumber) {
+    const dateStr = getTodayDateStr();
+    const seed = dateSeed(dateStr);
+    const rng = mulberry32(seed);
+    // Advance RNG by cutNumber * 4 draws for determinism
+    for (let i = 0; i < cutNumber * 4; i++) rng();
+
+    // Sandwich order: daily-seeded shuffle cycling through all 5
+    const sandwichIdx = Math.floor(rng() * SANDWICHES.length);
+
+    // Sawtooth difficulty pattern (cycles of 4)
+    const posInCycle = cutNumber % 4;
+    const cycle = Math.floor(cutNumber / 4);
+
+    // Per-cycle escalation (aggressive ramp)
+    const baseTimerShrink = 0.5 * cycle;
+    const baseOffsetGrow = 18 * cycle;
+    const baseRotGrow = 7 * cycle;
+
+    let offsetX = 0, rotation = 0, timer = 5.0, drift = false, driftSpeed = 0, rotSpeed = 0;
+
+    if (posInCycle === 0) {
+        // Easy / Breather
+        offsetX = 0;
+        rotation = 0;
+        timer = Math.max(1.5, 5.0 - baseTimerShrink);
+    } else if (posInCycle === 1) {
+        // Medium: offset + light rotation
+        const maxOff = Math.min(80, 30 + baseOffsetGrow);
+        offsetX = (rng() - 0.5) * 2 * maxOff;
+        const maxRot = Math.min(30, 10 + baseRotGrow);
+        rotation = (rng() - 0.5) * 2 * maxRot;
+        timer = Math.max(1.5, 4.0 - baseTimerShrink);
+    } else if (posInCycle === 2) {
+        // Hard: wide offset + heavy rotation
+        const maxOff = Math.min(80, 50 + baseOffsetGrow);
+        offsetX = (rng() - 0.5) * 2 * maxOff;
+        const maxRot = Math.min(30, 20 + baseRotGrow);
+        rotation = (rng() - 0.5) * 2 * maxRot;
+        timer = Math.max(1.5, 3.0 - baseTimerShrink);
+    } else {
+        // Recovery / Breather
+        offsetX = 0;
+        rotation = 0;
+        timer = Math.max(1.5, 4.5 - baseTimerShrink);
+    }
+
+    // Drift kicks in at cycle 2 (cut 8+), ramps aggressively
+    if (cycle >= 2) {
+        drift = true;
+        driftSpeed = 0.5 + (cycle - 2) * 0.25;
+        rotSpeed = 0.3 + (cycle - 2) * 0.15;
+    }
+
+    return { sandwichIdx, offsetX, rotation, timer, drift, driftSpeed, rotSpeed };
+}
+
+function loadLunchRushData() {
     try {
-        const raw = localStorage.getItem('shortcut_daily');
+        const raw = localStorage.getItem('shortcut_lunch_rush');
         if (!raw) return null;
         return JSON.parse(raw);
     } catch(e) { return null; }
 }
 
-function saveDailyData(data) {
-    try { localStorage.setItem('shortcut_daily', JSON.stringify(data)); } catch(e) {}
+function saveLunchRushData(data) {
+    try { localStorage.setItem('shortcut_lunch_rush', JSON.stringify(data)); } catch(e) {}
+}
+
+function loadLunchRushDayStreak() {
+    try {
+        const raw = localStorage.getItem('shortcut_lunch_rush_streak');
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch(e) { return null; }
+}
+
+function saveLunchRushDayStreak(data) {
+    try { localStorage.setItem('shortcut_lunch_rush_streak', JSON.stringify(data)); } catch(e) {}
 }
 
 // ============================================
@@ -1745,8 +1900,18 @@ async function generateShareCard() {
     cx.font = '10px "Press Start 2P", cursive';
     cx.fillText('?ref=' + playerId, 540, 1275);
 
-    return new Promise(resolve => {
-        c.toBlob(blob => resolve(blob), 'image/png');
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('toBlob timeout')), 5000);
+        try {
+            c.toBlob(blob => {
+                clearTimeout(timeout);
+                if (blob) resolve(blob);
+                else reject(new Error('toBlob returned null'));
+            }, 'image/png');
+        } catch(e) {
+            clearTimeout(timeout);
+            reject(e);
+        }
     });
 }
 
@@ -1756,7 +1921,28 @@ async function shareGame() {
 
     const shareText = getShareText();
 
-    // Attempt native share with image
+    // Copy to clipboard FIRST while user gesture is still valid
+    // iOS Safari gesture timing expires quickly during async operations
+    let clipboardSuccess = false;
+    try {
+        await navigator.clipboard.writeText(shareText);
+        clipboardSuccess = true;
+    } catch(e) {
+        // Clipboard failed, try execCommand fallback synchronously
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = shareText;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            clipboardSuccess = document.execCommand('copy');
+            document.body.removeChild(ta);
+        } catch(e2) { /* ignore */ }
+    }
+
+    // Try native share with image
     try {
         const blob = await generateShareCard();
         const file = new File([blob], 'short-cut-score.png', { type: 'image/png' });
@@ -1774,28 +1960,14 @@ async function shareGame() {
         }
     } catch(e) {
         if (e.name === 'AbortError') return;
-        // Fall through to clipboard on other errors
+        // Fall through to show clipboard result
     }
 
-    // Clipboard fallback — use execCommand for iOS Safari compatibility
-    try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(shareText);
-        } else {
-            // Fallback for iOS Safari where clipboard API may fail outside user gesture
-            const ta = document.createElement('textarea');
-            ta.value = shareText;
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.focus();
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-        }
+    // Show result based on whether clipboard succeeded earlier
+    if (clipboardSuccess) {
         showToast('LINK COPIED!');
         Analytics.shareSuccess(avg, 'clipboard');
-    } catch(e) {
+    } else {
         showToast('SHARE FAILED');
     }
 }
@@ -1806,6 +1978,21 @@ async function saveScoreCard() {
 
     try {
         const blob = await generateShareCard();
+        const file = new File([blob], 'short-cut-score.png', { type: 'image/png' });
+
+        // iOS Safari: <a download> doesn't work — use share sheet so user can "Save Image"
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({ files: [file] });
+                showToast('SAVED!');
+                return;
+            } catch(e) {
+                if (e.name === 'AbortError') return;
+                // Fall through to download link
+            }
+        }
+
+        // Desktop / Android: <a download> works
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -1813,11 +2000,58 @@ async function saveScoreCard() {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        // Delay revoke for iOS Safari which needs the URL to persist briefly
         setTimeout(() => URL.revokeObjectURL(url), 5000);
         showToast('SAVED!');
     } catch(e) {
         showToast('SAVE FAILED');
+    }
+}
+
+// ============================================
+// LUNCH RUSH SHARING
+// ============================================
+
+function getLunchRushShareText() {
+    let text = '\uD83D\uDD2A Lunch Rush \uD83E\uDD56\n';
+    text += lunchRushStreak + (lunchRushStreak === 1 ? ' cut' : ' cuts') + '\n';
+    for (let i = 0; i < lunchRushScores.length; i++) {
+        const s = lunchRushScores[i];
+        if (s >= 90) text += '\uD83D\uDFE2';
+        else if (s >= 80) text += '\uD83D\uDFE1';
+        else if (s >= 70) text += '\uD83D\uDFE0';
+        else text += '\uD83D\uDD34';
+    }
+    text += '\n' + GAME_URL;
+    return text;
+}
+
+async function shareLunchRush() {
+    const shareText = getLunchRushShareText();
+    Analytics.shareClick(lunchRushStreak, 'lunch_rush');
+
+    let clipboardSuccess = false;
+    try {
+        await navigator.clipboard.writeText(shareText);
+        clipboardSuccess = true;
+    } catch(e) {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = shareText;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            clipboardSuccess = document.execCommand('copy');
+            document.body.removeChild(ta);
+        } catch(e2) { /* ignore */ }
+    }
+
+    if (clipboardSuccess) {
+        showToast('COPIED!');
+        Analytics.shareSuccess(lunchRushStreak, 'lunch_rush');
+    } else {
+        showToast('SHARE FAILED');
     }
 }
 
@@ -1878,30 +2112,21 @@ function handleRewardTap(cx, cy) {
     if (buttons.playAgain) {
         const b = buttons.playAgain;
         if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
-            Analytics.playAgain(avg, dailyMode ? 'daily' : 'main');
+            Analytics.playAgain(avg, lunchRushMode ? 'lunch_rush' : 'main');
             gameState = 'title';
             return;
         }
     }
 
-    // Daily cut button on reward screen
-    if (dailyUnlocked && buttons.dailyReward) {
+    // Lunch Rush button on reward screen
+    if (lunchRushUnlocked && buttons.dailyReward) {
         const b = buttons.dailyReward;
         if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
-            startDailyCut();
+            startLunchRush();
             return;
         }
     }
 
-    // Order link
-    if (buttons.order) {
-        const b = buttons.order;
-        if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
-            Analytics.orderLinkClick(getCouponInfo(avg).code);
-            window.open('https://counterservice.com/order', '_blank');
-            return;
-        }
-    }
 }
 
 // ============================================
@@ -1968,7 +2193,7 @@ function update(deltaTime) {
             scoreDisplay.timer--;
             if (scoreDisplay.timer <= 0) {
                 // Check for short call (after round 1, first play)
-                if (currentRound === 0 && !shortCallShown && playCount <= 1 && !dailyMode) {
+                if (currentRound === 0 && !shortCallShown && playCount <= 1 && !lunchRushMode) {
                     shortCallShown = true;
                     try { localStorage.setItem('shortcut_short_call', 'true'); } catch(e) {}
                     gameState = 'short_call';
@@ -2016,7 +2241,7 @@ function update(deltaTime) {
             }
             break;
 
-        case 'daily_result':
+        case 'lunch_rush_death':
             break;
     }
 }
@@ -2054,7 +2279,8 @@ function updateTimer() {
         timerRemaining = 0;
         timerActive = false;
         roundScores.push(0);
-        Analytics.roundTimeout(currentRound + 1, SANDWICHES[ROUND_CONFIG[Math.min(currentRound, 4)].sandwichIdx].name);
+        const timeoutSandwichIdx = lunchRushMode ? getLunchRushConfig(currentRound).sandwichIdx : ROUND_CONFIG[Math.min(currentRound, 4)].sandwichIdx;
+        Analytics.roundTimeout(currentRound + 1, SANDWICHES[timeoutSandwichIdx].name);
         AudioSystem.timerBuzz();
         gameState = 'timeout';
         scoreDisplay = { score: 0, label: "TIME'S UP!", subtitle: '', color: COLORS.baronRed, timer: 90 };
@@ -2083,7 +2309,7 @@ function render() {
         case 'menu_show': renderMenuShow(); break;
         case 'reward': renderReward(); break;
         case 'timeout': renderGame(); renderScoreDisplay(); break;
-        case 'daily_result': renderDailyResult(); break;
+        case 'lunch_rush_death': renderLunchRushDeath(); break;
     }
 
     // Streak effects
@@ -2146,16 +2372,29 @@ function renderTitle() {
     drawText('TAP TO PLAY', GW / 2, 435, 12, COLORS.offWhite);
     ctx.globalAlpha = 1;
 
-    // Daily cut button
-    if (dailyUnlocked) {
+    // Lunch Rush button — yellow fill with pulsing glow
+    if (lunchRushUnlocked) {
         const bx = GW / 2 - 80, by = 460, bw = 160, bh = 30;
-        ctx.fillStyle = 'rgba(241,236,191,0.15)';
-        ctx.fillRect(bx, by, bw, bh);
+
+        // Pulsing glow behind button
+        const glowAlpha = 0.12 + Math.sin(frameCount * 0.06) * 0.08;
+        ctx.save();
+        ctx.globalAlpha = glowAlpha;
+        ctx.fillStyle = COLORS.csYellow;
+        drawRoundedRect(bx - 3, by - 3, bw + 6, bh + 6, 6);
+        ctx.restore();
+
+        // Button fill
+        ctx.fillStyle = 'rgba(241,236,191,0.25)';
+        drawRoundedRect(bx, by, bw, bh, 4);
         ctx.strokeStyle = COLORS.csYellow;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(bx, by, bw, bh);
-        drawText('DAILY CUT', GW / 2, by + 15, 8, COLORS.csYellow);
+        ctx.lineWidth = 1.5;
+        drawRoundedRect(bx, by, bw, bh, 4, true);
+        drawText('LUNCH RUSH', GW / 2, by + 15, 8, COLORS.csYellow);
         buttons.daily = { x: bx, y: by, w: bw, h: bh };
+        if (lunchRushDayStreak > 1) {
+            drawText('DAY ' + lunchRushDayStreak + ' STREAK', GW / 2, by + bh + 12, 6, '#888');
+        }
     }
 }
 
@@ -2182,15 +2421,16 @@ function renderIntro() {
     // Background
     renderBoard();
 
-    const config = dailyMode ? dailyConfig : ROUND_CONFIG[currentRound];
-    const sandIdx = dailyMode ? dailyConfig.sandwichIdx : config.sandwichIdx;
+    const config = lunchRushMode ? getLunchRushConfig(currentRound) : ROUND_CONFIG[currentRound];
+    const sandIdx = config.sandwichIdx;
     const data = SANDWICHES[sandIdx];
 
     // Round number — above the board
-    if (!dailyMode) {
-        drawText('ROUND ' + (currentRound + 1), GW / 2, 50, 16, COLORS.csYellow);
+    if (lunchRushMode) {
+        drawText('LUNCH RUSH', GW / 2, 40, 12, COLORS.csYellow);
+        drawText('CUT ' + (currentRound + 1), GW / 2, 62, 10, COLORS.offWhite);
     } else {
-        drawText('DAILY CUT', GW / 2, 50, 16, COLORS.csYellow);
+        drawText('ROUND ' + (currentRound + 1), GW / 2, 50, 16, COLORS.csYellow);
     }
 
     // Sandwich name — above the board
@@ -2234,8 +2474,8 @@ function renderIntro() {
         const ease = 1 - Math.pow(1 - sandwichEntranceProgress, 3);
         const slideX = GW + 100 - (GW + 100 - sandwich.x) * ease;
         const tempSw = { ...sandwich, x: slideX };
-        const sandIdx = dailyMode ? dailyConfig.sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
-        drawSandwich(tempSw, sandIdx);
+        const introSandIdx = lunchRushMode ? getLunchRushConfig(currentRound).sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
+        drawSandwich(tempSw, introSandIdx);
     }
 }
 
@@ -2557,15 +2797,16 @@ function renderBoard() {
 function renderGame() {
     renderBoard();
 
-    const config = dailyMode ? dailyConfig : ROUND_CONFIG[currentRound];
-    const sandIdx = dailyMode ? dailyConfig.sandwichIdx : (config.sandwichIdx !== undefined ? config.sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx);
+    const config = lunchRushMode ? getLunchRushConfig(currentRound) : ROUND_CONFIG[currentRound];
+    const sandIdx = config.sandwichIdx;
     const data = SANDWICHES[sandIdx];
 
     // HUD — round indicator + sandwich name above board
-    if (!dailyMode) {
-        drawText('ROUND ' + (currentRound + 1) + '/5', GW / 2, 30, 10, COLORS.csYellow);
+    if (lunchRushMode) {
+        drawText('LUNCH RUSH', GW / 2, 22, 8, COLORS.csYellow);
+        drawText('CUT ' + (currentRound + 1), GW / 2, 40, 10, COLORS.offWhite);
     } else {
-        drawText('DAILY CUT', GW / 2, 30, 10, COLORS.csYellow);
+        drawText('ROUND ' + (currentRound + 1) + '/5', GW / 2, 30, 10, COLORS.csYellow);
     }
 
     // Persistent sandwich name above board
@@ -2595,8 +2836,16 @@ function renderGame() {
         drawText(timerRemaining.toFixed(1) + 's', GW / 2, barY + 22, 8, timerColor);
     }
 
+    // 80% survival reminder for Lunch Rush
+    if (lunchRushMode) {
+        ctx.save();
+        ctx.globalAlpha = 1;
+        drawText('80% TO MAKE THE CUT', GW / 2, GH - 30, 7, COLORS.baronRed);
+        ctx.restore();
+    }
+
     // Round progress — mini sandwich icons
-    if (!dailyMode) {
+    if (!lunchRushMode) {
         const iconW = 18, iconH = 7, gap = 8;
         const totalW = 5 * iconW + 4 * gap;
         const startX = (GW - totalW) / 2;
@@ -2688,10 +2937,11 @@ function renderAnimating() {
     renderBoard();
 
     // HUD
-    if (!dailyMode) {
-        drawText('ROUND ' + (currentRound + 1) + '/5', GW / 2, 30, 10, COLORS.csYellow);
+    if (lunchRushMode) {
+        drawText('LUNCH RUSH', GW / 2, 22, 8, COLORS.csYellow);
+        drawText('CUT ' + (currentRound + 1), GW / 2, 40, 10, COLORS.offWhite);
     } else {
-        drawText('DAILY CUT', GW / 2, 30, 10, COLORS.csYellow);
+        drawText('ROUND ' + (currentRound + 1) + '/5', GW / 2, 30, 10, COLORS.csYellow);
     }
 
     renderCutAnimation();
@@ -2705,10 +2955,10 @@ function renderScoreDisplay() {
     // Ghost line showing perfect center cut
     if (cutAnim && cutAnim.perfectEntry) {
         ctx.save();
-        ctx.globalAlpha = alpha * 0.3;
-        ctx.setLineDash([4, 4]);
-        ctx.strokeStyle = COLORS.perfectGold;
-        ctx.lineWidth = 1;
+        ctx.globalAlpha = alpha * 0.55;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(cutAnim.perfectEntry.x, cutAnim.perfectEntry.y);
         ctx.lineTo(cutAnim.perfectExit.x, cutAnim.perfectExit.y);
@@ -2947,114 +3197,212 @@ function renderMenuShow() {
 }
 
 function renderReward() {
-    ctx.fillStyle = '#12121A';
+    // Kraft paper background
+    ctx.fillStyle = '#C4A87C';
     ctx.fillRect(0, 0, GW, GH);
+
+    // Paper grain
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    for (let i = 0; i < 400; i++) {
+        const gx = Math.random() * GW;
+        const gy = Math.random() * GH;
+        ctx.fillStyle = Math.random() > 0.5 ? '#A08050' : '#D8C4A0';
+        ctx.fillRect(gx, gy, Math.random() * 3 + 1, 1);
+    }
+    ctx.restore();
+
+    // Black border
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(10, 10, GW - 20, GH - 20);
 
     const avg = roundScores.reduce((a, b) => a + b, 0) / roundScores.length;
     const { rank, code, desc } = getCouponInfo(avg);
-    const rankTitle = getRankTitle(avg);
 
-    // Rank
-    drawTextOutline(rankTitle, GW / 2, 45, 16, avg >= 95 ? COLORS.perfectGold : (avg >= 90 ? '#4CAF50' : COLORS.offWhite), '#000');
-
-    // Coupon area
-    const couponY = 80;
-    ctx.fillStyle = 'rgba(241,236,191,0.1)';
-    ctx.fillRect(40, couponY, GW - 80, 90);
-    ctx.strokeStyle = COLORS.csYellow;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(40, couponY, GW - 80, 90);
-
-    drawText('Your code: ' + code, GW / 2, couponY + 20, 9, COLORS.csYellow);
-    drawText(desc, GW / 2, couponY + 42, 7, COLORS.offWhite);
-    drawText('Show this screen at checkout', GW / 2, couponY + 60, 6, '#888');
-    drawText('Tap code to copy', GW / 2, couponY + 78, 6, '#666');
-
-    buttons.coupon = { x: 40, y: couponY, w: GW - 80, h: 90 };
-
-    // Action buttons
+    // Calculate total content height to vertically center
+    const couponH = 95;
+    const gap1 = 15;
     const btnW = GW - 80;
     const btnH = 36;
-    const btnX = 40;
-    let btnY = 195;
+    const btnGap = 10;
+    const buttonsH = 3 * btnH + 2 * btnGap; // 3 buttons
+    const gap2 = 14;
+    const dailyH = lunchRushUnlocked ? 45 : 0;
+    const gap3 = lunchRushUnlocked ? 10 : 0;
+    const logoH = 28;
+    const totalH = couponH + gap1 + buttonsH + gap2 + dailyH + gap3 + logoH;
+    const couponY = Math.round((GH - totalH) / 2);
 
-    // Challenge
-    ctx.fillStyle = COLORS.csYellow;
+    // Coupon area
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(40, couponY, GW - 80, couponH);
+
+    drawText('CODE: ' + code, GW / 2, couponY + 22, 12, '#000');
+    drawText(desc, GW / 2, couponY + 46, 7, '#000');
+    drawText('Valid online or in store', GW / 2, couponY + 65, 6, '#555');
+    drawText('Tap code to copy', GW / 2, couponY + 82, 6, '#888');
+
+    buttons.coupon = { x: 40, y: couponY, w: GW - 80, h: couponH };
+
+    // Action buttons
+    const btnX = 40;
+    let btnY = couponY + couponH + gap1;
+
+    // Challenge — Baron Red (primary)
+    ctx.fillStyle = '#E1625D';
     drawRoundedRect(btnX, btnY, btnW, btnH, 4);
-    drawText('CHALLENGE A FRIEND', GW / 2, btnY + btnH / 2, 9, '#000');
+    drawText('CHALLENGE A FRIEND', GW / 2, btnY + btnH / 2, 9, '#FFF');
     buttons.challenge = { x: btnX, y: btnY, w: btnW, h: btnH };
 
-    btnY += btnH + 12;
+    btnY += btnH + btnGap;
 
-    // Save
-    ctx.fillStyle = 'rgba(241,236,191,0.2)';
-    drawRoundedRect(btnX, btnY, btnW, btnH, 4);
-    ctx.strokeStyle = COLORS.csYellow;
-    ctx.lineWidth = 1;
+    // Save — black outline (secondary)
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
     drawRoundedRect(btnX, btnY, btnW, btnH, 4, true);
-    drawText('SAVE SCORE CARD', GW / 2, btnY + btnH / 2, 9, COLORS.csYellow);
+    drawText('SAVE SCORE CARD', GW / 2, btnY + btnH / 2, 9, '#000');
     buttons.save = { x: btnX, y: btnY, w: btnW, h: btnH };
 
-    btnY += btnH + 12;
+    btnY += btnH + btnGap;
 
-    // Play again
-    ctx.fillStyle = 'rgba(183,71,71,0.3)';
+    // Play again — black filled (tertiary)
+    ctx.fillStyle = '#000';
     drawRoundedRect(btnX, btnY, btnW, btnH, 4);
-    ctx.strokeStyle = COLORS.baronRed;
-    ctx.lineWidth = 1;
-    drawRoundedRect(btnX, btnY, btnW, btnH, 4, true);
-    drawText('PLAY AGAIN', GW / 2, btnY + btnH / 2, 9, COLORS.offWhite);
+    drawText('PLAY AGAIN', GW / 2, btnY + btnH / 2, 9, '#FFF');
     buttons.playAgain = { x: btnX, y: btnY, w: btnW, h: btnH };
 
-    btnY += btnH + 18;
+    btnY += btnH + gap2;
 
-    // Daily Cut teaser
-    if (dailyUnlocked) {
-        const dc = getDailyConfig();
-        const dailySandwich = SANDWICHES[dc.sandwichIdx];
-        ctx.fillStyle = 'rgba(241,236,191,0.08)';
-        ctx.fillRect(40, btnY, GW - 80, 50);
-        drawText('DAILY CUT', GW / 2, btnY + 15, 8, COLORS.csYellow);
-        const rotStr = Math.abs(dc.rotation).toFixed(0);
-        drawText('Today: ' + dailySandwich.name + ' at ' + rotStr + '\u00B0', GW / 2, btnY + 35, 6, '#888');
-        buttons.dailyReward = { x: 40, y: btnY, w: GW - 80, h: 50 };
-        btnY += 60;
+    // Lunch Rush teaser — baron red fill with pulsing glow
+    if (lunchRushUnlocked) {
+        const lrW = GW - 80, lrH = 45, lrX = 40, lrY = btnY;
+
+        // Pulsing glow behind button
+        const glowAlpha = 0.15 + Math.sin(frameCount * 0.06) * 0.1;
+        ctx.save();
+        ctx.globalAlpha = glowAlpha;
+        ctx.fillStyle = '#E1625D';
+        drawRoundedRect(lrX - 3, lrY - 3, lrW + 6, lrH + 6, 6);
+        ctx.restore();
+
+        // Button fill
+        ctx.fillStyle = '#E1625D';
+        drawRoundedRect(lrX, lrY, lrW, lrH, 4);
+        drawText('LUNCH RUSH', GW / 2, lrY + 16, 9, '#FFF');
+        const bestStr = lunchRushBestToday > 0 ? 'Best today: ' + lunchRushBestToday + ' cuts' : 'Orders are piling up';
+        drawText(bestStr, GW / 2, lrY + 34, 6, 'rgba(255,255,255,0.8)');
+        buttons.dailyReward = { x: lrX, y: lrY, w: lrW, h: lrH };
+        btnY += lrH + gap3;
     }
 
-    // Order link
-    drawText('counterservice.com/order', GW / 2, btnY + 10, 7, '#6688AA');
-    buttons.order = { x: 40, y: btnY, w: GW - 80, h: 24 };
+    // Stacked CS logo
+    drawText('cOUNTEr', GW / 2, btnY + 2, 7, '#000');
+    drawText('SERVICE', GW / 2, btnY + 16, 7, '#000');
 }
 
-function renderDailyResult() {
-    ctx.fillStyle = '#12121A';
+function renderLunchRushDeath() {
+    // Kraft paper background
+    ctx.fillStyle = '#C4A87C';
     ctx.fillRect(0, 0, GW, GH);
 
-    drawText('DAILY CUT', GW / 2, 60, 16, COLORS.csYellow);
+    // Paper grain
+    ctx.save();
+    ctx.globalAlpha = 0.06;
+    for (let i = 0; i < 400; i++) {
+        const gx = Math.random() * GW;
+        const gy = Math.random() * GH;
+        ctx.fillStyle = Math.random() > 0.5 ? '#A08050' : '#D8C4A0';
+        ctx.fillRect(gx, gy, Math.random() * 3 + 1, 1);
+    }
+    ctx.restore();
 
-    const dc = getDailyConfig();
-    const data = SANDWICHES[dc.sandwichIdx];
-    drawText(data.name, GW / 2, 100, 12, COLORS.offWhite);
+    // Black border
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(10, 10, GW - 20, GH - 20);
 
-    if (roundScores.length > 0) {
-        const score = roundScores[0];
-        drawText(score.toFixed(1) + '%', GW / 2, 180, 28, COLORS.csYellow);
+    // Title
+    drawTextOutline("COULDN'T", GW / 2, 48, 20, COLORS.baronRed, '#000');
+    drawTextOutline('CUT IT', GW / 2, 78, 20, COLORS.baronRed, '#000');
 
-        let label;
-        if (score >= 98) label = 'PERFECT!';
-        else if (score >= 90) label = 'NICE!';
-        else if (score >= 80) label = 'OK';
-        else label = 'OOOF';
-        drawText(label, GW / 2, 230, 14, score >= 90 ? COLORS.perfectGold : COLORS.offWhite);
+    // Streak count large
+    drawText(lunchRushStreak + (lunchRushStreak === 1 ? ' CUT' : ' CUTS'), GW / 2, 115, 20, '#000');
+
+    // The killing score
+    if (lunchRushScores.length > 0) {
+        const killingScore = lunchRushScores[lunchRushScores.length - 1];
+        drawText('Final cut: ' + killingScore.toFixed(1) + '%', GW / 2, 155, 8, '#555');
     }
 
-    drawText('Best: ' + dailyBestScore.toFixed(1) + '%', GW / 2, 290, 9, '#888');
-    drawText('Attempts: ' + dailyAttempts + '/3', GW / 2, 315, 8, '#888');
+    // Best today
+    drawText('BEST TODAY: ' + lunchRushBestToday, GW / 2, 190, 9, '#000');
 
+    // Near-miss motivator
+    if (lunchRushBestToday > 0 && lunchRushStreak >= lunchRushBestToday - 1 && lunchRushStreak < lunchRushBestToday) {
+        drawText('1 AWAY FROM YOUR BEST!', GW / 2, 215, 7, COLORS.baronRed);
+    } else if (lunchRushStreak >= lunchRushBestToday && lunchRushStreak > 0) {
+        drawText('NEW PERSONAL BEST!', GW / 2, 215, 7, COLORS.baronRed);
+    }
+
+    // Day streak
+    if (lunchRushDayStreak > 1) {
+        drawText('DAY ' + lunchRushDayStreak + ' STREAK', GW / 2, 240, 7, '#555');
+    }
+
+    // Score sequence visualization — colored dots (canvas fillRect squares)
+    if (lunchRushScores.length > 0) {
+        const dotSize = 8;
+        const dotGap = 4;
+        const maxDotsPerRow = Math.floor((GW - 60) / (dotSize + dotGap));
+        const totalDots = lunchRushScores.length;
+        const rows = Math.ceil(totalDots / maxDotsPerRow);
+        const startY = 265;
+
+        for (let r = 0; r < rows; r++) {
+            const rowStart = r * maxDotsPerRow;
+            const rowEnd = Math.min(rowStart + maxDotsPerRow, totalDots);
+            const rowCount = rowEnd - rowStart;
+            const rowW = rowCount * (dotSize + dotGap) - dotGap;
+            const rowX = (GW - rowW) / 2;
+
+            for (let i = rowStart; i < rowEnd; i++) {
+                const s = lunchRushScores[i];
+                let dotColor;
+                if (s >= 90) dotColor = '#4CAF50';      // green
+                else if (s >= 80) dotColor = '#FFC107';  // yellow
+                else if (s >= 70) dotColor = '#FF9800';  // orange
+                else dotColor = '#F44336';               // red
+                ctx.fillStyle = dotColor;
+                const dx = rowX + (i - rowStart) * (dotSize + dotGap);
+                ctx.fillRect(dx, startY + r * (dotSize + dotGap), dotSize, dotSize);
+            }
+        }
+    }
+
+    // Share button — Baron Red
+    const shareBtnW = 160, shareBtnH = 32;
+    const shareBtnX = GW / 2 - shareBtnW / 2, shareBtnY = 330;
+    ctx.fillStyle = '#E1625D';
+    drawRoundedRect(shareBtnX, shareBtnY, shareBtnW, shareBtnH, 4);
+    drawText('SHARE', GW / 2, shareBtnY + shareBtnH / 2, 9, '#FFF');
+    buttons.lunchRushShare = { x: shareBtnX, y: shareBtnY, w: shareBtnW, h: shareBtnH };
+
+    // TAP TO TRY AGAIN
     const flash = Math.sin(frameCount * 0.08) * 0.3 + 0.7;
     ctx.globalAlpha = flash;
-    drawText('TAP TO CONTINUE', GW / 2, 420, 8, '#888');
+    drawText('TAP TO TRY AGAIN', GW / 2, 410, 10, '#000');
     ctx.globalAlpha = 1;
+
+    // EXIT (small)
+    const exitBtnW = 80, exitBtnH = 24;
+    const exitBtnX = GW / 2 - exitBtnW / 2, exitBtnY = 450;
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    drawText('EXIT', GW / 2, exitBtnY + exitBtnH / 2, 7, '#555');
+    ctx.restore();
+    buttons.lunchRushExit = { x: exitBtnX, y: exitBtnY, w: exitBtnW, h: exitBtnH };
 }
 
 // ============================================
@@ -3117,8 +3465,19 @@ function init() {
     // Load state
     try {
         shortCallShown = localStorage.getItem('shortcut_short_call') === 'true';
-        dailyUnlocked = localStorage.getItem('shortcut_daily_unlocked') === 'true';
+        lunchRushUnlocked = localStorage.getItem('shortcut_daily_unlocked') === 'true';
+        // Load day streak
+        const streakData = loadLunchRushDayStreak();
+        if (streakData) {
+            const today = getTodayDateStr();
+            if (streakData.lastDate === today || streakData.lastDate === getYesterdayDateStr()) {
+                lunchRushDayStreak = streakData.streak || 0;
+            }
+        }
     } catch(e) {}
+
+    // Load sprites (non-blocking — game starts immediately, sprites appear when ready)
+    if (USE_SPRITES) loadAllSprites();
 
     requestAnimationFrame(gameLoop);
 }
