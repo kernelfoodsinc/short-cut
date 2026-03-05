@@ -143,7 +143,7 @@
 // ============================================
 
 const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+let ctx = canvas.getContext('2d');
 
 const GW = 384;
 const GH = 512;
@@ -212,24 +212,6 @@ function hasSpriteFor(sandwichIdx) {
     return spriteMap[id] && spriteMap[id].side;
 }
 
-function hasCrossSpriteFor(sandwichIdx) {
-    if (!USE_SPRITES || !spritesLoaded) return false;
-    const id = SANDWICHES[sandwichIdx].id;
-    return spriteMap[id] && spriteMap[id].cross;
-}
-
-function drawCrossSectionSprite(targetCtx, sandwichIdx, cx, cy, size) {
-    if (hasCrossSpriteFor(sandwichIdx)) {
-        const sprite = spriteMap[SANDWICHES[sandwichIdx].id].cross;
-        targetCtx.imageSmoothingEnabled = true;
-        targetCtx.imageSmoothingQuality = 'high';
-        targetCtx.drawImage(sprite, cx - size / 2, cy - size / 2, size, size);
-        targetCtx.imageSmoothingEnabled = false;
-    } else {
-        drawCrossSection(cx - size / 2, cy - size / 2, size, size, sandwichIdx);
-    }
-}
-
 // Draw side-view sprite at arbitrary size. Aspect ratio 2.5:1 (320x128).
 function drawSideSprite(targetCtx, sandwichIdx, cx, cy, width) {
     const h = width / 2.5;
@@ -240,12 +222,15 @@ function drawSideSprite(targetCtx, sandwichIdx, cx, cy, width) {
         targetCtx.drawImage(sprite, cx - width / 2, cy - h / 2, width, h);
         targetCtx.imageSmoothingEnabled = false;
     } else {
-        // Fallback: procedural side view
+        // Fallback: procedural side view (swap ctx for off-canvas rendering)
         const fakeSw = { x: 0, y: 0, w: width, h: h, rotation: 0, visible: true };
-        targetCtx.save();
-        targetCtx.translate(cx, cy);
+        const prevCtx = ctx;
+        ctx = targetCtx;
+        ctx.save();
+        ctx.translate(cx, cy);
         drawSandwichProcedural(fakeSw, sandwichIdx);
-        targetCtx.restore();
+        ctx.restore();
+        ctx = prevCtx;
     }
 }
 
@@ -312,6 +297,8 @@ const SANDWICH_NAMES = SANDWICHES.map(s => s.name);
 // ROUND CONFIGS
 // ============================================
 
+const LUNCH_RUSH_THRESHOLD = 85;
+
 const ROUND_CONFIG = [
     { sandwichIdx: 0, offsetX: 0, rotation: 0, timer: 5.0, drift: false },
     { sandwichIdx: 1, offsetRange: [-70, 70], rotationRange: [5, 10], timer: 3.5, drift: false },
@@ -348,8 +335,6 @@ let timerActive = false;
 // Drift for round 5
 let driftVX = 0;
 let driftVR = 0;
-let driftDir = 1;
-let driftRotDir = 1;
 
 // Swipe state
 let swipe = { active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 };
@@ -395,6 +380,7 @@ let lunchRushAttempts = 0;
 let lunchRushScores = [];
 let lunchRushDayStreak = 0;
 let lunchRushKillingSandwich = 0;
+let lunchRushCachedConfig = null;
 
 // Particles
 let particles = [];
@@ -507,9 +493,6 @@ const Analytics = {
     },
     orderLinkClick(tier) {
         this.track('order_link_click', { coupon_tier: tier });
-    },
-    locationLinkClick() {
-        this.track('location_link_click');
     },
     referralArrival(ref) {
         this.track('referral_arrival', { ref_source: ref });
@@ -1035,49 +1018,6 @@ function drawChefKnife(cx, cy) {
     ctx.restore();
 }
 
-function drawCrossSection(x, y, w, h, sandwichIdx) {
-    const data = SANDWICHES[sandwichIdx];
-    const colors = data.crossColors;
-    const layerH = h / colors.length;
-
-    ctx.save();
-    // Oval clip
-    ctx.beginPath();
-    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
-    ctx.clip();
-
-    // Outer crust ring
-    ctx.fillStyle = '#D4A54A';
-    ctx.fillRect(x, y, w, h);
-
-    // Inner area
-    const inset = 4;
-    ctx.beginPath();
-    ctx.ellipse(x + w / 2, y + h / 2, w / 2 - inset, h / 2 - inset, 0, 0, Math.PI * 2);
-    ctx.clip();
-
-    for (let i = 0; i < colors.length; i++) {
-        ctx.fillStyle = colors[i];
-        const ly = y + inset + i * ((h - inset * 2) / colors.length);
-        const lh = (h - inset * 2) / colors.length + 1;
-        ctx.fillRect(x, ly, w, lh);
-        // Add slight texture
-        if (i > 0 && i < colors.length - 1) {
-            ctx.fillStyle = 'rgba(0,0,0,0.08)';
-            ctx.fillRect(x, ly, w, 1);
-        }
-    }
-
-    ctx.restore();
-
-    // Outline
-    ctx.strokeStyle = COLORS.darkOutline;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
-    ctx.stroke();
-}
-
 // ============================================
 // PARTICLE SYSTEM
 // ============================================
@@ -1141,7 +1081,7 @@ function renderParticles() {
 // ============================================
 
 function startCutAnimation(entry, exit, polyA, polyB, score) {
-    const sandwichIdx = lunchRushMode ? getLunchRushConfig(currentRound).sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
+    const sandwichIdx = lunchRushMode ? lunchRushCachedConfig.sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
     const data = SANDWICHES[sandwichIdx];
 
     // Determine perpendicular direction for separation
@@ -1263,7 +1203,7 @@ function updateCutAnimation() {
         }
 
         scoreDisplay = { score, label, subtitle, color, timer: 90 };
-        const completeSandwichIdx = lunchRushMode ? getLunchRushConfig(currentRound).sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
+        const completeSandwichIdx = lunchRushMode ? lunchRushCachedConfig.sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
         Analytics.roundComplete(currentRound + 1, SANDWICHES[completeSandwichIdx].name, score, label);
         if (lunchRushMode) {
             Analytics.lunchRushCut(currentRound + 1, SANDWICHES[completeSandwichIdx].name, score);
@@ -1397,7 +1337,7 @@ function handlePointerDown(cx, cy) {
         if (buttons.orderNow) {
             const b = buttons.orderNow;
             if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
-                Analytics.orderLinkClick();
+                Analytics.orderLinkClick(getCouponInfo(getAvgScore()).code);
                 window.open('https://counterservice.com/', '_blank');
                 return;
             }
@@ -1598,7 +1538,8 @@ function startLunchRush() {
 }
 
 function setupRound() {
-    const config = lunchRushMode ? getLunchRushConfig(currentRound) : ROUND_CONFIG[currentRound];
+    if (lunchRushMode) lunchRushCachedConfig = getLunchRushConfig(currentRound);
+    const config = lunchRushMode ? lunchRushCachedConfig : ROUND_CONFIG[currentRound];
 
     sandwich.w = 200;
     sandwich.h = 80;
@@ -1649,7 +1590,7 @@ function setupRound() {
 function nextRoundOrEnd() {
     if (lunchRushMode) {
         const lastScore = roundScores[roundScores.length - 1];
-        return lastScore < 85 ? 'lunch_rush_death' : 'intro';
+        return lastScore < LUNCH_RUSH_THRESHOLD ? 'lunch_rush_death' : 'intro';
     }
     if (currentRound >= 4) {
         return 'results';
@@ -1682,7 +1623,7 @@ function advanceToNextRound() {
         gameState = 'lunch_rush_death';
         lunchRushStreak = roundScores.length - 1; // cuts survived (last one killed you)
         lunchRushScores = roundScores.slice();
-        lunchRushKillingSandwich = getLunchRushConfig(currentRound).sandwichIdx;
+        lunchRushKillingSandwich = lunchRushCachedConfig.sandwichIdx;
 
         // Persist streak data
         const dateStr = getTodayDateStr();
@@ -1777,19 +1718,18 @@ function getYesterdayDateStr() {
 function getLunchRushConfig(cutNumber) {
     const dateStr = getTodayDateStr();
     const seed = dateSeed(dateStr);
-    const rng = mulberry32(seed);
-    // Advance RNG by cutNumber * 4 draws for determinism
-    for (let i = 0; i < cutNumber * 4; i++) rng();
-
-    // Sandwich: no back-to-back repeats
-    let sandwichIdx = Math.floor(rng() * SANDWICHES.length);
-    if (cutNumber > 0) {
-        // Regenerate previous sandwich to check for repeat
-        const prevRng = mulberry32(seed);
-        for (let i = 0; i < (cutNumber - 1) * 4; i++) prevRng();
-        const prevIdx = Math.floor(prevRng() * SANDWICHES.length);
-        if (sandwichIdx === prevIdx) sandwichIdx = (sandwichIdx + 1) % SANDWICHES.length;
+    // Sandwich sequence: dedicated RNG stream, no back-to-back repeats
+    const sandRng = mulberry32(seed + 1);
+    let prevSandwich = -1, sandwichIdx = 0;
+    for (let c = 0; c <= cutNumber; c++) {
+        sandwichIdx = Math.floor(sandRng() * SANDWICHES.length);
+        if (sandwichIdx === prevSandwich) sandwichIdx = (sandwichIdx + 1) % SANDWICHES.length;
+        prevSandwich = sandwichIdx;
     }
+
+    // Difficulty params: separate RNG stream
+    const rng = mulberry32(seed);
+    for (let i = 0; i < cutNumber * 3; i++) rng();
 
     // Sawtooth difficulty pattern (cycles of 4)
     const posInCycle = cutNumber % 4;
@@ -2394,7 +2334,8 @@ function updateDrift() {
     if (sandwich.x + hw > GW) { sandwich.x = GW - hw; driftVX = -Math.abs(driftVX); }
 
     // Oscillate rotation
-    if (Math.abs(sandwich.rotation) > 25) driftVR = -driftVR;
+    if (sandwich.rotation > 25) { sandwich.rotation = 25; driftVR = -Math.abs(driftVR); }
+    if (sandwich.rotation < -25) { sandwich.rotation = -25; driftVR = Math.abs(driftVR); }
 }
 
 function updateTimer() {
@@ -2414,7 +2355,7 @@ function updateTimer() {
         timerRemaining = 0;
         timerActive = false;
         roundScores.push(0);
-        const timeoutSandwichIdx = lunchRushMode ? getLunchRushConfig(currentRound).sandwichIdx : ROUND_CONFIG[Math.min(currentRound, 4)].sandwichIdx;
+        const timeoutSandwichIdx = lunchRushMode ? lunchRushCachedConfig.sandwichIdx : ROUND_CONFIG[Math.min(currentRound, 4)].sandwichIdx;
         Analytics.roundTimeout(currentRound + 1, SANDWICHES[timeoutSandwichIdx].name);
         AudioSystem.timerBuzz();
         gameState = 'timeout';
@@ -2554,7 +2495,7 @@ function renderIntro() {
     // Background
     renderBoard();
 
-    const config = lunchRushMode ? getLunchRushConfig(currentRound) : ROUND_CONFIG[currentRound];
+    const config = lunchRushMode ? lunchRushCachedConfig : ROUND_CONFIG[currentRound];
     const sandIdx = config.sandwichIdx;
     const data = SANDWICHES[sandIdx];
 
@@ -2607,7 +2548,7 @@ function renderIntro() {
         const ease = 1 - Math.pow(1 - sandwichEntranceProgress, 3);
         const slideX = GW + 100 - (GW + 100 - sandwich.x) * ease;
         const tempSw = { ...sandwich, x: slideX };
-        const introSandIdx = lunchRushMode ? getLunchRushConfig(currentRound).sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
+        const introSandIdx = lunchRushMode ? lunchRushCachedConfig.sandwichIdx : ROUND_CONFIG[currentRound].sandwichIdx;
         drawSandwich(tempSw, introSandIdx);
     }
 }
@@ -2930,7 +2871,7 @@ function renderBoard() {
 function renderGame() {
     renderBoard();
 
-    const config = lunchRushMode ? getLunchRushConfig(currentRound) : ROUND_CONFIG[currentRound];
+    const config = lunchRushMode ? lunchRushCachedConfig : ROUND_CONFIG[currentRound];
     const sandIdx = config.sandwichIdx;
     const data = SANDWICHES[sandIdx];
 
@@ -2969,11 +2910,11 @@ function renderGame() {
         drawText(timerRemaining.toFixed(1) + 's', GW / 2, barY + 22, 8, timerColor);
     }
 
-    // 85% survival reminder for Lunch Rush
+    // Survival reminder for Lunch Rush
     if (lunchRushMode) {
         ctx.save();
         ctx.globalAlpha = 1;
-        drawText('85% TO MAKE THE CUT', GW / 2, GH - 30, 7, COLORS.baronRed);
+        drawText(LUNCH_RUSH_THRESHOLD + '% TO MAKE THE CUT', GW / 2, GH - 30, 7, COLORS.baronRed);
         ctx.restore();
     }
 
@@ -3215,13 +3156,7 @@ function renderResults() {
             ctx.fillRect(GW / 2 - 100, avgY + 20, 200, 30);
             drawText(rank, GW / 2, avgY + 35, 12, '#FFF');
 
-            // Worst cut callout
-            if (roundScores.length > 0) {
-                const worstName = names[worstRound];
-                const worstScore = roundScores[worstRound].toFixed(1);
-                drawText('Worst: ' + worstName + ' ' + worstScore + '%', GW / 2, avgY + 70, 7, '#000');
-                drawText('Can you beat it?', GW / 2, avgY + 87, 7, '#000');
-            }
+            drawText('Can you beat it?', GW / 2, avgY + 65, 7, '#000');
 
             // Tap to continue
             const flash = Math.sin(frameCount * 0.08) * 0.2 + 0.6;
@@ -3335,6 +3270,8 @@ function renderReward() {
     const { rank, code, desc } = getCouponInfo(avg);
 
     // Calculate total content height to vertically center
+    const logoH = 28;
+    const logoGap = 12;
     const couponH = 95;
     const gap1 = 15;
     const btnW = GW - 80;
@@ -3343,10 +3280,15 @@ function renderReward() {
     const buttonsH = 3 * btnH + 2 * btnGap; // 3 buttons
     const gap2 = 14;
     const dailyH = lunchRushUnlocked ? 45 : 0;
-    const gap3 = lunchRushUnlocked ? 10 : 0;
-    const logoH = 28;
-    const totalH = couponH + gap1 + buttonsH + gap2 + dailyH + gap3 + logoH;
-    const couponY = Math.round((GH - totalH) / 2);
+    const totalH = logoH + logoGap + couponH + gap1 + buttonsH + gap2 + dailyH;
+    let contentY = Math.round((GH - totalH) / 2);
+
+    // Stacked CS logo (top)
+    drawText('cOUNTEr', GW / 2, contentY + 2, 7, '#000');
+    drawText('SERVICE', GW / 2, contentY + 16, 7, '#000');
+    contentY += logoH + logoGap;
+
+    const couponY = contentY;
 
     // Coupon area
     ctx.strokeStyle = '#000';
@@ -3408,12 +3350,7 @@ function renderReward() {
         const bestStr = lunchRushBestToday > 0 ? 'Best today: ' + lunchRushBestToday + ' cuts' : 'Orders are piling up';
         drawText(bestStr, GW / 2, lrY + 34, 6, 'rgba(255,255,255,0.8)');
         buttons.dailyReward = { x: lrX, y: lrY, w: lrW, h: lrH };
-        btnY += lrH + gap3;
     }
-
-    // Stacked CS logo
-    drawText('cOUNTEr', GW / 2, btnY + 2, 7, '#000');
-    drawText('SERVICE', GW / 2, btnY + 16, 7, '#000');
 }
 
 function renderLunchRushDeath() {
@@ -3570,15 +3507,10 @@ function gameLoop(timestamp) {
 // ============================================
 
 document.addEventListener('visibilitychange', () => {
-    if (document.hidden && timerActive) {
-        // Pause effect — we just don't decrement while hidden
-        // (update() won't run while tab is hidden due to rAF)
-    }
-    // Reset lastTime so we don't get a huge dt spike on resume
+    // Timer pauses automatically — update() won't run while tab is hidden due to rAF
     if (!document.hidden) {
-        lastTime = 0;
-        // Re-acquire wake lock (auto-released when tab hidden)
-        if (gameState !== 'title') requestWakeLock();
+        lastTime = 0; // Prevent huge dt spike on resume
+        if (gameState !== 'title' && !wakeLock) requestWakeLock();
     }
 });
 
