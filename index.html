@@ -381,6 +381,7 @@ let lunchRushScores = [];
 let lunchRushDayStreak = 0;
 let lunchRushKillingSandwich = 0;
 let lunchRushCachedConfig = null;
+let cachedShareCardBlob = null;
 
 // Particles
 let particles = [];
@@ -1559,6 +1560,9 @@ function advanceToNextRound() {
         saveLunchRushData(data);
 
         Analytics.lunchRushEnd(lunchRushStreak, lunchRushBestToday);
+        // Pre-generate share card so it's instant on tap
+        cachedShareCardBlob = null;
+        generateLunchRushShareCard().then(b => { cachedShareCardBlob = b; }).catch(() => {});
     }
 }
 
@@ -1579,6 +1583,9 @@ function advanceFromResults() {
 function advanceFromMenuShow() {
     gameState = 'reward';
     setupRewardScreen();
+    // Pre-generate share card so it's instant on tap
+    cachedShareCardBlob = null;
+    generateShareCard().then(b => { cachedShareCardBlob = b; }).catch(() => {});
 }
 
 function setupRewardScreen() {
@@ -1927,9 +1934,9 @@ async function shareGame() {
         } catch(e2) { /* ignore */ }
     }
 
-    // Try native share with image
+    // Try native share with image (use pre-generated blob for instant response)
     try {
-        const blob = await generateShareCard();
+        const blob = cachedShareCardBlob || await generateShareCard();
         const file = new File([blob], 'short-cut-score.png', { type: 'image/png' });
 
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -1962,7 +1969,7 @@ async function saveScoreCard() {
     Analytics.saveImage(avg);
 
     try {
-        const blob = await generateShareCard();
+        const blob = cachedShareCardBlob || await generateShareCard();
         const file = new File([blob], 'short-cut-score.png', { type: 'image/png' });
         const coupon = getCouponInfo(avg);
         const shareText = 'I scored ' + avg.toFixed(1) + '% in Short Cut and earned ' + coupon.rank + '!\n' + GAME_URL;
@@ -2138,7 +2145,7 @@ async function generateLunchRushShareCard() {
 
 async function saveLunchRushCard() {
     try {
-        const blob = await generateLunchRushShareCard();
+        const blob = cachedShareCardBlob || await generateLunchRushShareCard();
         const file = new File([blob], 'lunch-rush-score.png', { type: 'image/png' });
         const shareText = 'Lunch Rush — ' + lunchRushStreak + (lunchRushStreak === 1 ? ' cut' : ' cuts') + '!\n' + GAME_URL;
 
@@ -2174,21 +2181,26 @@ function getLunchRushShareText() {
     return '\uD83D\uDD2A Lunch Rush \u2014 ' + lunchRushStreak + (lunchRushStreak === 1 ? ' cut' : ' cuts') + '\n' + GAME_URL;
 }
 
-function shareLunchRush() {
+async function shareLunchRush() {
     const shareText = getLunchRushShareText();
     Analytics.shareClick(lunchRushStreak, 'lunch_rush');
 
-    // Try native share first (mobile)
-    if (navigator.share) {
-        navigator.share({ text: shareText }).then(function() {
+    // Try native share with image (use pre-generated blob for instant response)
+    try {
+        const blob = cachedShareCardBlob || await generateLunchRushShareCard();
+        const file = new File([blob], 'lunch-rush-score.png', { type: 'image/png' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], text: shareText });
+            showToast('SHARED!');
             Analytics.shareSuccess(lunchRushStreak, 'lunch_rush');
-        }).catch(function() {
-            // User cancelled or failed — try clipboard
-            copyToClipboard(shareText);
-        });
-        return;
+            return;
+        }
+    } catch(e) {
+        if (e.name === 'AbortError') return;
     }
 
+    // Fallback to clipboard
     copyToClipboard(shareText);
 }
 
@@ -3564,7 +3576,7 @@ function renderLunchRushDeath() {
     let btnY = 325;
     ctx.fillStyle = '#E1625D';
     drawRoundedRect(btnX, btnY, btnW, btnH, 4);
-    drawText('SHARE', GW / 2, btnY + btnH / 2, 9, '#FFF');
+    drawText('CHALLENGE A FRIEND', GW / 2, btnY + btnH / 2, 9, '#FFF');
     buttons.lunchRushShare = { x: btnX, y: btnY, w: btnW, h: btnH };
 
     // Save Score Card button — outline
