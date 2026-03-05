@@ -7,6 +7,8 @@
 
     <meta name="description" content="Can you cut a sandwich perfectly in half? 5 sandwiches. 5 cuts. How precise are you?">
     <meta name="theme-color" content="#1A1A2E">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="canonical" href="https://games.counterservice.com/short-cut/">
     <link rel="icon" href="https://counterservice.com/favicon.ico">
 
@@ -45,6 +47,8 @@
             -webkit-overflow-scrolling: none;
             -webkit-user-select: none;
             user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
         }
         body {
             display: flex;
@@ -539,6 +543,16 @@ function verifyDeterminism(numCuts) {
 // ============================================
 // HAPTICS
 // ============================================
+
+// Screen Wake Lock — prevents screen dimming during gameplay
+let wakeLock = null;
+async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+}
+function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
 
 const Haptics = {
     vibrate(p) { try { navigator.vibrate && navigator.vibrate(p); } catch(e) {} },
@@ -1415,6 +1429,7 @@ function handlePointerDown(cx, cy) {
             const b = buttons.lunchRushExit;
             if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
                 gameState = 'title';
+                releaseWakeLock();
                 return;
             }
         }
@@ -1538,6 +1553,7 @@ function startMainGame() {
     lunchRushMode = false;
     playCount++;
     introTimer = 0;
+    requestWakeLock();
     Analytics.gameStart('main');
 }
 
@@ -1550,6 +1566,7 @@ function startLunchRush() {
     roundScores = [];
     streak = 0;
     introTimer = 0;
+    requestWakeLock();
 
     // Update day streak
     const today = getTodayDateStr();
@@ -2224,6 +2241,7 @@ function handleRewardTap(cx, cy) {
         if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
             Analytics.playAgain(avg, lunchRushMode ? 'lunch_rush' : 'main');
             gameState = 'title';
+            releaseWakeLock();
             return;
         }
     }
@@ -3550,7 +3568,11 @@ document.addEventListener('visibilitychange', () => {
         // (update() won't run while tab is hidden due to rAF)
     }
     // Reset lastTime so we don't get a huge dt spike on resume
-    if (!document.hidden) lastTime = 0;
+    if (!document.hidden) {
+        lastTime = 0;
+        // Re-acquire wake lock (auto-released when tab hidden)
+        if (gameState !== 'title') requestWakeLock();
+    }
 });
 
 // Invalidate cached rect on resize/orientation change
