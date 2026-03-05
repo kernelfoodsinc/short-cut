@@ -1781,8 +1781,15 @@ function getLunchRushConfig(cutNumber) {
     // Advance RNG by cutNumber * 4 draws for determinism
     for (let i = 0; i < cutNumber * 4; i++) rng();
 
-    // Sandwich order: daily-seeded shuffle cycling through all 5
-    const sandwichIdx = Math.floor(rng() * SANDWICHES.length);
+    // Sandwich: no back-to-back repeats
+    let sandwichIdx = Math.floor(rng() * SANDWICHES.length);
+    if (cutNumber > 0) {
+        // Regenerate previous sandwich to check for repeat
+        const prevRng = mulberry32(seed);
+        for (let i = 0; i < (cutNumber - 1) * 4; i++) prevRng();
+        const prevIdx = Math.floor(prevRng() * SANDWICHES.length);
+        if (sandwichIdx === prevIdx) sandwichIdx = (sandwichIdx + 1) % SANDWICHES.length;
+    }
 
     // Sawtooth difficulty pattern (cycles of 4)
     const posInCycle = cutNumber % 4;
