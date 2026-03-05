@@ -181,16 +181,25 @@ function loadSprite(src) {
 }
 
 async function loadAllSprites() {
-    // For now, chicken club sprite is used for all sandwiches
-    const sideSrc = 'sprites/chicken-club-side.png';
-    const sideImg = await loadSprite(sideSrc);
+    const spriteFiles = {
+        greenGoddess: 'sprites/chicken-club-side.png',
+        smokeshow: 'sprites/smokeshow-side.png',
+        buffaloChicken: 'sprites/buffalo-chicken-side.png',
+        baron: 'sprites/baron-side.png',
+        chickenCaesar: 'sprites/chicken-caesar-side.png'
+    };
 
-    // Map all sandwich IDs to the same sprite for testing
-    for (const sw of SANDWICHES) {
-        spriteMap[sw.id] = { side: sideImg };
+    const results = await Promise.all(
+        SANDWICHES.map(sw => loadSprite(spriteFiles[sw.id]).then(img => ({ id: sw.id, img })))
+    );
+
+    let anyLoaded = false;
+    for (const { id, img } of results) {
+        spriteMap[id] = { side: img };
+        if (img) anyLoaded = true;
     }
 
-    spritesLoaded = !!sideImg;
+    spritesLoaded = anyLoaded;
 }
 
 function hasSpriteFor(sandwichIdx) {
