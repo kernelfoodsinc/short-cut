@@ -1730,9 +1730,9 @@ function setupRewardScreen() {
 }
 
 function getCouponInfo(avg) {
-    if (avg >= 95) return { rank: 'Sous Chef', code: 'SHORTCUT', desc: '$5 off $20 for you AND a friend' };
-    if (avg >= 90) return { rank: 'Line Cook', code: 'LINECUT', desc: '$3 off your next order ($12+)' };
-    return { rank: 'Prep Cook', code: 'FIRSTCUT', desc: 'Free cookie with any purchase' };
+    if (avg >= 97) return { rank: 'Sous Chef', code: 'SHORTCUT', desc: '$5 off $20 for you AND a friend' };
+    if (avg >= 90) return { rank: 'Line Cook', code: 'CLEANCUT', desc: 'Free cookie with any purchase' };
+    return { rank: 'Prep Cook', code: 'FIRSTCUT', desc: 'Free drink with any purchase' };
 }
 
 function getRankTitle(avg) {
