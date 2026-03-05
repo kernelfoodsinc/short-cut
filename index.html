@@ -931,92 +931,6 @@ function drawRoundedRect(x, y, w, h, r, strokeOnly) {
     else ctx.fill();
 }
 
-function drawChefKnife(cx, cy) {
-    ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(-0.15); // slight angle
-
-    // Blade — stainless steel
-    ctx.fillStyle = '#C0C0C8';
-    ctx.beginPath();
-    ctx.moveTo(-20, -2);   // spine back
-    ctx.lineTo(18, -2);    // spine front
-    ctx.lineTo(22, 0);     // tip
-    ctx.lineTo(18, 3);     // edge front
-    ctx.lineTo(-14, 5);    // belly curve
-    ctx.lineTo(-20, 3);    // heel
-    ctx.closePath();
-    ctx.fill();
-
-    // Blade highlight
-    ctx.fillStyle = '#D8D8E0';
-    ctx.beginPath();
-    ctx.moveTo(-18, -1);
-    ctx.lineTo(16, -1);
-    ctx.lineTo(18, 0);
-    ctx.lineTo(16, 1);
-    ctx.lineTo(-18, 0);
-    ctx.closePath();
-    ctx.fill();
-
-    // Blade edge — darker line along cutting edge
-    ctx.strokeStyle = '#909098';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-20, 3);
-    ctx.lineTo(-14, 5);
-    ctx.lineTo(18, 3);
-    ctx.lineTo(22, 0);
-    ctx.stroke();
-
-    // Bolster (where blade meets handle)
-    ctx.fillStyle = '#888890';
-    ctx.fillRect(-22, -3, 4, 8);
-
-    // Handle — dark wood
-    ctx.fillStyle = '#3A2A1A';
-    ctx.beginPath();
-    ctx.moveTo(-22, -3);
-    ctx.lineTo(-38, -2);
-    ctx.lineTo(-38, 4);
-    ctx.lineTo(-22, 5);
-    ctx.closePath();
-    ctx.fill();
-
-    // Handle wood grain
-    ctx.strokeStyle = '#2A1A0A';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-36, 0); ctx.lineTo(-24, 0);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(-35, 2); ctx.lineTo(-25, 2);
-    ctx.stroke();
-
-    // Rivets
-    ctx.fillStyle = '#888890';
-    ctx.beginPath(); ctx.arc(-32, 1, 1.5, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(-26, 1, 1.5, 0, Math.PI * 2); ctx.fill();
-
-    // Outline
-    ctx.strokeStyle = '#2A1A0A';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-38, -2);
-    ctx.lineTo(-22, -3);
-    ctx.lineTo(-20, -2);
-    ctx.lineTo(18, -2);
-    ctx.lineTo(22, 0);
-    ctx.lineTo(18, 3);
-    ctx.lineTo(-14, 5);
-    ctx.lineTo(-20, 3);
-    ctx.lineTo(-22, 5);
-    ctx.lineTo(-38, 4);
-    ctx.closePath();
-    ctx.stroke();
-
-    ctx.restore();
-}
 
 // ============================================
 // PARTICLE SYSTEM
@@ -1290,6 +1204,7 @@ function handlePointerDown(cx, cy) {
                 return;
             }
         }
+        // Check PLAY button (or tap anywhere else)
         startMainGame();
         return;
     }
@@ -2049,20 +1964,20 @@ async function saveScoreCard() {
     try {
         const blob = await generateShareCard();
         const file = new File([blob], 'short-cut-score.png', { type: 'image/png' });
+        const coupon = getCouponInfo(avg);
+        const shareText = 'I scored ' + avg.toFixed(1) + '% in Short Cut and earned ' + coupon.rank + '!\n' + GAME_URL;
 
-        // iOS Safari: <a download> doesn't work — use share sheet so user can "Save Image"
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
-                await navigator.share({ files: [file] });
-                showToast('SAVED!');
+                await navigator.share({ files: [file], text: shareText });
+                showToast('SHARED!');
                 return;
             } catch(e) {
                 if (e.name === 'AbortError') return;
-                // Fall through to download link
             }
         }
 
-        // Desktop / Android: <a download> works
+        // Desktop / Android fallback: <a download>
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -2225,11 +2140,12 @@ async function saveLunchRushCard() {
     try {
         const blob = await generateLunchRushShareCard();
         const file = new File([blob], 'lunch-rush-score.png', { type: 'image/png' });
+        const shareText = 'Lunch Rush — ' + lunchRushStreak + (lunchRushStreak === 1 ? ' cut' : ' cuts') + '!\n' + GAME_URL;
 
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
-                await navigator.share({ files: [file] });
-                showToast('SAVED!');
+                await navigator.share({ files: [file], text: shareText });
+                showToast('SHARED!');
                 return;
             } catch(e) {
                 if (e.name === 'AbortError') return;
@@ -2596,79 +2512,65 @@ function renderTitle() {
     renderKitchenBg();
 
     // Dark overlay so text is readable
-    ctx.fillStyle = 'rgba(10,10,18,0.7)';
+    ctx.fillStyle = 'rgba(10,10,18,0.75)';
     ctx.fillRect(0, 0, GW, GH);
 
-    // Title
-    drawTextOutline('SHORT', GW / 2, 130, 32, COLORS.csYellow, '#000');
-    drawTextOutline('CUT', GW / 2, 170, 32, COLORS.csYellow, '#000');
+    // Counter Service logo — small, top
+    drawText('cOUNTEr', GW / 2, 30, 8, '#777');
+    drawText('SERVICE', GW / 2, 44, 8, '#777');
 
-    // Chef knife icon
-    drawChefKnife(GW / 2, 210);
+    // Title — big and bold
+    drawTextOutline('SHORT', GW / 2, 100, 36, COLORS.csYellow, '#000');
+    drawTextOutline('CUT', GW / 2, 146, 36, COLORS.csYellow, '#000');
 
-    // Stacked CS logo
-    drawText('cOUNTEr', GW / 2, 248, 10, '#AAA');
-    drawText('SERVICE', GW / 2, 264, 10, '#AAA');
-
-    // Placeholder sandwich display
-    drawSandwichPreview(GW / 2, 330);
-
-    // Instructions
+    // Large sandwich — no box, gentle bob animation
+    const bobY = Math.sin(frameCount * 0.03) * 4;
+    const sw = { x: 0, y: 0, w: 240, h: 96, rotation: 0, visible: true };
     ctx.save();
-    ctx.globalAlpha = 0.5;
-    drawText('SWIPE TO SLICE PERFECTLY IN HALF', GW / 2, 400, 7, '#AAA');
+    ctx.translate(GW / 2, 240 + bobY);
+    drawSandwich(sw, ROUND_CONFIG[0].sandwichIdx);
     ctx.restore();
 
-    // Tap to play
-    const flash = Math.sin(frameCount * 0.08) * 0.3 + 0.7;
-    ctx.globalAlpha = flash;
-    drawText('TAP TO PLAY', GW / 2, 435, 12, COLORS.offWhite);
-    ctx.globalAlpha = 1;
+    // Hook text
+    drawText('CAN YOU CUT IT?', GW / 2, 310, 9, '#AAA');
 
-    // Lunch Rush button — yellow fill with pulsing glow
+    // PLAY button — red box with pulsing glow, matches Lunch Rush style
+    const playBw = 160, playBh = 34;
+    const playBx = GW / 2 - playBw / 2, playBy = 350;
+
+    // Pulsing glow behind button
+    const glowAlpha = 0.15 + Math.sin(frameCount * 0.06) * 0.1;
+    ctx.save();
+    ctx.globalAlpha = glowAlpha;
+    ctx.fillStyle = COLORS.baronRed;
+    drawRoundedRect(playBx - 3, playBy - 3, playBw + 6, playBh + 6, 6);
+    ctx.restore();
+
+    // Button fill
+    ctx.fillStyle = 'rgba(183,71,71,0.3)';
+    drawRoundedRect(playBx, playBy, playBw, playBh, 4);
+    ctx.strokeStyle = COLORS.baronRed;
+    ctx.lineWidth = 1.5;
+    drawRoundedRect(playBx, playBy, playBw, playBh, 4, true);
+    drawText('PLAY', GW / 2, playBy + playBh / 2, 14, COLORS.offWhite);
+    buttons.play = { x: playBx, y: playBy, w: playBw, h: playBh };
+
+    // Lunch Rush button — muted, below PLAY
     if (lunchRushUnlocked) {
-        const bx = GW / 2 - 80, by = 460, bw = 160, bh = 30;
-
-        // Pulsing glow behind button
-        const glowAlpha = 0.12 + Math.sin(frameCount * 0.06) * 0.08;
-        ctx.save();
-        ctx.globalAlpha = glowAlpha;
-        ctx.fillStyle = COLORS.csYellow;
-        drawRoundedRect(bx - 3, by - 3, bw + 6, bh + 6, 6);
-        ctx.restore();
-
-        // Button fill
-        ctx.fillStyle = 'rgba(241,236,191,0.25)';
+        const bx = GW / 2 - 80, by = 420, bw = 160, bh = 28;
+        ctx.fillStyle = 'rgba(241,236,191,0.15)';
         drawRoundedRect(bx, by, bw, bh, 4);
-        ctx.strokeStyle = COLORS.csYellow;
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(241,236,191,0.5)';
+        ctx.lineWidth = 1;
         drawRoundedRect(bx, by, bw, bh, 4, true);
-        drawText('LUNCH RUSH', GW / 2, by + 15, 8, COLORS.csYellow);
+        drawText('LUNCH RUSH', GW / 2, by + 14, 8, 'rgba(241,236,191,0.7)');
         buttons.daily = { x: bx, y: by, w: bw, h: bh };
         if (lunchRushDayStreak > 1) {
-            drawText('DAY ' + lunchRushDayStreak + ' STREAK', GW / 2, by + bh + 12, 6, '#888');
+            drawText('DAY ' + lunchRushDayStreak + ' STREAK', GW / 2, by + bh + 12, 6, '#666');
         }
     }
 }
 
-function drawSandwichPreview(x, y) {
-    ctx.save();
-    ctx.translate(x, y);
-
-    // Cutting board — maple style matching gameplay board
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
-    drawRoundedRect(-98, -36, 200, 80, 8);
-    ctx.fillStyle = '#C4A06A';
-    drawRoundedRect(-100, -40, 200, 80, 8);
-    ctx.fillStyle = '#D8B880';
-    drawRoundedRect(-96, -36, 192, 72, 6);
-
-    // Simple sandwich
-    const sw = { x: 0, y: 0, w: 140, h: 52, rotation: 0, visible: true };
-    drawSandwich(sw, ROUND_CONFIG[0].sandwichIdx);
-
-    ctx.restore();
-}
 
 function renderIntro() {
     // Background
@@ -3497,7 +3399,7 @@ function renderReward() {
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
     drawRoundedRect(btnX, btnY, btnW, btnH, 4, true);
-    drawText('SAVE SCORE CARD', GW / 2, btnY + btnH / 2, 9, '#000');
+    drawText('SHARE SCORE CARD', GW / 2, btnY + btnH / 2, 9, '#000');
     buttons.save = { x: btnX, y: btnY, w: btnW, h: btnH };
 
     btnY += btnH + btnGap;
@@ -3670,7 +3572,7 @@ function renderLunchRushDeath() {
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
     drawRoundedRect(btnX, btnY, btnW, btnH, 4, true);
-    drawText('SAVE SCORE CARD', GW / 2, btnY + btnH / 2, 7, '#000');
+    drawText('SHARE SCORE CARD', GW / 2, btnY + btnH / 2, 7, '#000');
     buttons.lunchRushSave = { x: btnX, y: btnY, w: btnW, h: btnH };
 
     // TAP TO TRY AGAIN
