@@ -310,10 +310,10 @@ const SANDWICH_NAMES = SANDWICHES.map(s => s.name);
 
 const ROUND_CONFIG = [
     { sandwichIdx: 0, offsetX: 0, rotation: 0, timer: 5.0, drift: false },
-    { sandwichIdx: 1, offsetRange: [-70, 70], rotationRange: [5, 10], timer: 4.0, drift: false },
-    { sandwichIdx: 2, offsetRange: [-40, 40], rotationRange: [15, 20], timer: 3.5, drift: false },
-    { sandwichIdx: 3, offsetX: 0, rotation: 0, timer: 2.5, drift: false },
-    { sandwichIdx: 4, offsetX: 0, rotation: 0, timer: 2.0, drift: true,
+    { sandwichIdx: 1, offsetRange: [-70, 70], rotationRange: [5, 10], timer: 3.5, drift: false },
+    { sandwichIdx: 2, offsetRange: [-40, 40], rotationRange: [15, 20], timer: 3.0, drift: false },
+    { sandwichIdx: 3, offsetRange: [-20, 20], rotation: 0, timer: 2.0, drift: false },
+    { sandwichIdx: 4, offsetRange: [-15, 15], rotation: 0, timer: 1.8, drift: true,
       driftSpeed: 0.7, rotSpeed: 0.4 }
 ];
 
@@ -335,7 +335,7 @@ let streak = 0;
 let streakFlashTimer = 0;
 
 // Per-round
-let sandwich = { x: 0, y: 0, w: 160, h: 64, rotation: 0, visible: false };
+let sandwich = { x: 0, y: 0, w: 200, h: 80, rotation: 0, visible: false };
 let sandwichEntranceProgress = 0;
 let timerRemaining = 0;
 let timerTotal = 0;
@@ -1583,8 +1583,8 @@ function startLunchRush() {
 function setupRound() {
     const config = lunchRushMode ? getLunchRushConfig(currentRound) : ROUND_CONFIG[currentRound];
 
-    sandwich.w = 160;
-    sandwich.h = 64;
+    sandwich.w = 200;
+    sandwich.h = 80;
     sandwich.y = 296;
     sandwich.visible = true;
 
@@ -1632,7 +1632,7 @@ function setupRound() {
 function nextRoundOrEnd() {
     if (lunchRushMode) {
         const lastScore = roundScores[roundScores.length - 1];
-        return lastScore < 80 ? 'lunch_rush_death' : 'intro';
+        return lastScore < 85 ? 'lunch_rush_death' : 'intro';
     }
     if (currentRound >= 4) {
         return 'results';
@@ -1785,14 +1785,14 @@ function getLunchRushConfig(cutNumber) {
         timer = Math.max(1.5, 5.0 - baseTimerShrink);
     } else if (posInCycle === 1) {
         // Medium: offset + light rotation
-        const maxOff = Math.min(80, 30 + baseOffsetGrow);
+        const maxOff = Math.min(95, 38 + baseOffsetGrow);
         offsetX = (rng() - 0.5) * 2 * maxOff;
         const maxRot = Math.min(30, 10 + baseRotGrow);
         rotation = (rng() - 0.5) * 2 * maxRot;
         timer = Math.max(1.5, 4.0 - baseTimerShrink);
     } else if (posInCycle === 2) {
         // Hard: wide offset + heavy rotation
-        const maxOff = Math.min(80, 50 + baseOffsetGrow);
+        const maxOff = Math.min(95, 62 + baseOffsetGrow);
         offsetX = (rng() - 0.5) * 2 * maxOff;
         const maxRot = Math.min(30, 20 + baseRotGrow);
         rotation = (rng() - 0.5) * 2 * maxRot;
@@ -2944,11 +2944,11 @@ function renderGame() {
         drawText(timerRemaining.toFixed(1) + 's', GW / 2, barY + 22, 8, timerColor);
     }
 
-    // 80% survival reminder for Lunch Rush
+    // 85% survival reminder for Lunch Rush
     if (lunchRushMode) {
         ctx.save();
         ctx.globalAlpha = 1;
-        drawText('80% TO MAKE THE CUT', GW / 2, GH - 30, 7, COLORS.baronRed);
+        drawText('85% TO MAKE THE CUT', GW / 2, GH - 30, 7, COLORS.baronRed);
         ctx.restore();
     }
 
