@@ -1873,24 +1873,24 @@ async function generateShareCard() {
     cx.font = '36px "Press Start 2P", cursive';
     cx.fillStyle = '#000';
     cx.textAlign = 'center';
-    cx.fillText('S H O R T  C U T', 540, 110);
+    cx.fillText('S H O R T  C U T', 540, 160);
 
     cx.font = '18px "Press Start 2P", cursive';
     cx.fillStyle = '#000';
-    cx.fillText('cOUNTEr', 540, 155);
-    cx.fillText('SERVICE', 540, 180);
+    cx.fillText('cOUNTEr', 540, 205);
+    cx.fillText('SERVICE', 540, 230);
 
     // Thin divider line
     cx.strokeStyle = '#000';
     cx.lineWidth = 1;
     cx.beginPath();
-    cx.moveTo(120, 210);
-    cx.lineTo(960, 210);
+    cx.moveTo(120, 260);
+    cx.lineTo(960, 260);
     cx.stroke();
 
     // Score bars
     const names = SANDWICH_NAMES;
-    const barY = 260;
+    const barY = 300;
     const barH = 50;
     const barSpacing = 100;
     const barMaxW = 560;
@@ -1943,7 +1943,7 @@ async function generateShareCard() {
     cx.textAlign = 'center';
     cx.font = '14px "Press Start 2P", cursive';
     cx.fillStyle = '#000';
-    cx.fillText('\u2702 AVERAGE \u2702', 540, barY + 5 * barSpacing + 10);
+    cx.fillText('AVERAGE', 540, barY + 5 * barSpacing + 10);
 
     cx.font = '48px "Press Start 2P", cursive';
     cx.fillStyle = '#000';
@@ -1957,12 +1957,10 @@ async function generateShareCard() {
     cx.fillStyle = '#FFF';
     cx.fillText(rank, 540, bannerY + 35);
 
-    // URL
-    cx.font = '12px "Press Start 2P", cursive';
+    // Order CTA
+    cx.font = '14px "Press Start 2P", cursive';
     cx.fillStyle = '#000';
-    cx.fillText('games.counterservice.com/short-cut', 540, 1250);
-    cx.font = '10px "Press Start 2P", cursive';
-    cx.fillText('?ref=' + playerId, 540, 1275);
+    cx.fillText('ORDER NOW AT COUNTERSERVICE.COM', 540, 1260);
 
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('toBlob timeout')), 5000);
