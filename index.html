@@ -1667,44 +1667,43 @@ function getLunchRushConfig(cutNumber) {
     const cycle = Math.floor(cutNumber / 4);
 
     // Per-cycle escalation (aggressive ramp)
-    const baseTimerShrink = 0.5 * cycle;
+    const baseTimerShrink = 0.4 * cycle;
     const baseOffsetGrow = 18 * cycle;
     const baseRotGrow = 7 * cycle;
 
-    let offsetX = 0, rotation = 0, timer = 5.0, drift = false, driftSpeed = 0, rotSpeed = 0;
+    let offsetX = 0, rotation = 0, timer = 3.5, drift = true, driftSpeed = 0.2, rotSpeed = 0;
 
     if (posInCycle === 0) {
-        // Easy / Breather
-        offsetX = 0;
-        rotation = 0;
-        timer = Math.max(1.5, 5.0 - baseTimerShrink);
+        // Easy / Breather — slight offset, not a freebie
+        const maxOff = Math.min(95, 15 + baseOffsetGrow * 0.3);
+        offsetX = (rng() - 0.5) * 2 * maxOff;
+        rotation = (rng() - 0.5) * 2 * 5;
+        timer = Math.max(1.5, 3.5 - baseTimerShrink);
     } else if (posInCycle === 1) {
         // Medium: offset + light rotation
         const maxOff = Math.min(95, 38 + baseOffsetGrow);
         offsetX = (rng() - 0.5) * 2 * maxOff;
         const maxRot = Math.min(30, 10 + baseRotGrow);
         rotation = (rng() - 0.5) * 2 * maxRot;
-        timer = Math.max(1.5, 4.0 - baseTimerShrink);
+        timer = Math.max(1.5, 3.0 - baseTimerShrink);
     } else if (posInCycle === 2) {
         // Hard: wide offset + heavy rotation
         const maxOff = Math.min(95, 62 + baseOffsetGrow);
         offsetX = (rng() - 0.5) * 2 * maxOff;
         const maxRot = Math.min(30, 20 + baseRotGrow);
         rotation = (rng() - 0.5) * 2 * maxRot;
-        timer = Math.max(1.5, 3.0 - baseTimerShrink);
+        timer = Math.max(1.5, 2.5 - baseTimerShrink);
     } else {
-        // Recovery / Breather
-        offsetX = 0;
+        // Recovery — light offset, generous timer
+        const maxOff = Math.min(95, 15 + baseOffsetGrow * 0.3);
+        offsetX = (rng() - 0.5) * 2 * maxOff;
         rotation = 0;
-        timer = Math.max(1.5, 4.5 - baseTimerShrink);
+        timer = Math.max(1.5, 3.5 - baseTimerShrink);
     }
 
-    // Drift kicks in at cycle 2 (cut 8+), ramps aggressively
-    if (cycle >= 2) {
-        drift = true;
-        driftSpeed = 0.5 + (cycle - 2) * 0.25;
-        rotSpeed = 0.3 + (cycle - 2) * 0.15;
-    }
+    // Drift ramps with cycle — always present, gets faster
+    driftSpeed = Math.min(1.2, 0.2 + cycle * 0.2);
+    rotSpeed = cycle >= 1 ? Math.min(0.6, 0.15 + (cycle - 1) * 0.15) : 0;
 
     return { sandwichIdx, offsetX, rotation, timer, drift, driftSpeed, rotSpeed };
 }
