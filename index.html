@@ -577,16 +577,19 @@ const AudioSystem = {
         if (!this.enabled || !this.ctx) return;
         this.resume();
         try {
+            const t = this.ctx.currentTime;
             const osc = this.ctx.createOscillator();
             const gain = this.ctx.createGain();
             osc.type = type;
             osc.frequency.value = freq;
-            gain.gain.setValueAtTime(vol, this.ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
+            // Fade in over 5ms to avoid click
+            gain.gain.setValueAtTime(0.001, t);
+            gain.gain.linearRampToValueAtTime(vol, t + 0.005);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
             osc.connect(gain);
             gain.connect(this.ctx.destination);
-            osc.start(this.ctx.currentTime);
-            osc.stop(this.ctx.currentTime + dur);
+            osc.start(t);
+            osc.stop(t + dur + 0.01);
             osc.onended = () => { osc.disconnect(); gain.disconnect(); };
         } catch(e) {}
     },
@@ -596,6 +599,7 @@ const AudioSystem = {
         if (!this.enabled || !this.ctx || !this.noiseBuffer) return;
         this.resume();
         try {
+            const t = this.ctx.currentTime;
             const src = this.ctx.createBufferSource();
             src.buffer = this.noiseBuffer;
             const bp = this.ctx.createBiquadFilter();
@@ -603,12 +607,14 @@ const AudioSystem = {
             bp.frequency.value = (freqLow + freqHigh) / 2;
             bp.Q.value = 1;
             const g = this.ctx.createGain();
-            g.gain.setValueAtTime(vol, this.ctx.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + dur);
+            // Fade in over 5ms to avoid click
+            g.gain.setValueAtTime(0.001, t);
+            g.gain.linearRampToValueAtTime(vol, t + 0.005);
+            g.gain.exponentialRampToValueAtTime(0.001, t + dur);
             src.connect(bp);
             bp.connect(g);
             g.connect(this.ctx.destination);
-            src.start(this.ctx.currentTime, 0, dur);
+            src.start(t, 0, dur + 0.01);
             src.onended = () => { src.disconnect(); bp.disconnect(); g.disconnect(); };
         } catch(e) {}
     },
@@ -1277,14 +1283,6 @@ function handlePointerDown(cx, cy) {
             const b = buttons.lunchRushShare;
             if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
                 shareLunchRush();
-                return;
-            }
-        }
-        // Check save button
-        if (buttons.lunchRushSave) {
-            const b = buttons.lunchRushSave;
-            if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
-                saveLunchRushCard();
                 return;
             }
         }
@@ -2002,19 +2000,20 @@ async function saveScoreCard() {
 async function generateLunchRushShareCard() {
     try { await document.fonts.ready; } catch(e) {}
 
+    const cardH = 850;
     const c = document.createElement('canvas');
     c.width = 1080;
-    c.height = 1350;
+    c.height = cardH;
     const cx = c.getContext('2d');
 
     // Kraft paper background
     cx.fillStyle = '#C4A87C';
-    cx.fillRect(0, 0, 1080, 1350);
+    cx.fillRect(0, 0, 1080, cardH);
     cx.save();
     cx.globalAlpha = 0.06;
-    for (let i = 0; i < 3000; i++) {
+    for (let i = 0; i < 2000; i++) {
         const gx = Math.random() * 1080;
-        const gy = Math.random() * 1350;
+        const gy = Math.random() * cardH;
         cx.fillStyle = Math.random() > 0.5 ? '#A08050' : '#D8C4A0';
         cx.fillRect(gx, gy, Math.random() * 3 + 1, 1);
     }
@@ -2023,10 +2022,10 @@ async function generateLunchRushShareCard() {
     // Black border
     cx.strokeStyle = '#000';
     cx.lineWidth = 8;
-    cx.strokeRect(30, 30, 1020, 1290);
+    cx.strokeRect(30, 30, 1020, cardH - 60);
     cx.strokeStyle = '#333';
     cx.lineWidth = 2;
-    cx.strokeRect(42, 42, 996, 1266);
+    cx.strokeRect(42, 42, 996, cardH - 84);
 
     // Title
     cx.font = '48px "Press Start 2P", cursive';
@@ -2034,21 +2033,21 @@ async function generateLunchRushShareCard() {
     cx.textAlign = 'center';
     cx.strokeStyle = '#000';
     cx.lineWidth = 6;
-    cx.strokeText("COULDN'T", 540, 140);
-    cx.strokeText('CUT IT', 540, 200);
-    cx.fillText("COULDN'T", 540, 140);
-    cx.fillText('CUT IT', 540, 200);
+    cx.strokeText("COULDN'T", 540, 130);
+    cx.strokeText('CUT IT', 540, 190);
+    cx.fillText("COULDN'T", 540, 130);
+    cx.fillText('CUT IT', 540, 190);
 
     // Killer sandwich
-    const killW = 400, killH = 160;
+    const killW = 400;
     cx.save();
-    cx.translate(540, 330);
+    cx.translate(540, 310);
     cx.rotate(-0.12);
     drawSideSprite(cx, lunchRushKillingSandwich, 0, 0, killW);
     cx.restore();
     cx.font = '16px "Press Start 2P", cursive';
     cx.fillStyle = '#555';
-    cx.fillText(SANDWICHES[lunchRushKillingSandwich].name, 540, 430);
+    cx.fillText(SANDWICHES[lunchRushKillingSandwich].name, 540, 405);
 
     // Killing score
     if (lunchRushScores.length > 0) {
@@ -2056,28 +2055,28 @@ async function generateLunchRushShareCard() {
         cx.font = '18px "Press Start 2P", cursive';
         if (killingScore === 0) {
             cx.fillStyle = '#E1625D';
-            cx.fillText("TIME'S UP", 540, 490);
+            cx.fillText("TIME'S UP", 540, 460);
         } else {
             cx.fillStyle = '#555';
-            cx.fillText('Final cut: ' + killingScore.toFixed(1) + '%', 540, 490);
+            cx.fillText('Final cut: ' + killingScore.toFixed(1) + '%', 540, 460);
         }
     }
 
     // Best today
     cx.font = '22px "Press Start 2P", cursive';
     cx.fillStyle = '#000';
-    cx.fillText('BEST TODAY: ' + lunchRushBestToday, 540, 545);
+    cx.fillText('BEST TODAY: ' + lunchRushBestToday, 540, 515);
 
     // Day streak
     if (lunchRushDayStreak > 1) {
         cx.font = '16px "Press Start 2P", cursive';
         cx.fillStyle = '#555';
-        cx.fillText('DAY ' + lunchRushDayStreak + ' STREAK', 540, 585);
+        cx.fillText('DAY ' + lunchRushDayStreak + ' STREAK', 540, 555);
     }
 
     // Tally marks
     const survived = lunchRushStreak;
-    const tallyY = 640;
+    const tallyY = 600;
     cx.save();
     cx.strokeStyle = '#5A4530';
     cx.lineWidth = 6;
@@ -2126,7 +2125,7 @@ async function generateLunchRushShareCard() {
     cx.font = '14px "Press Start 2P", cursive';
     cx.fillStyle = '#000';
     cx.textAlign = 'center';
-    cx.fillText('ORDER NOW AT COUNTERSERVICE.COM', 540, 1260);
+    cx.fillText('ORDER NOW AT COUNTERSERVICE.COM', 540, cardH - 55);
 
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('toBlob timeout')), 5000);
@@ -2280,7 +2279,7 @@ function handleRewardTap(cx, cy) {
         }
     }
 
-    // Save button
+    // Save button (legacy, kept for safety)
     if (buttons.save) {
         const b = buttons.save;
         if (cx >= b.x && cx <= b.x + b.w && cy >= b.y && cy <= b.y + b.h) {
@@ -3399,20 +3398,11 @@ function renderReward() {
     const btnX = 40;
     let btnY = couponY + couponH + gap1;
 
-    // Challenge — Baron Red (primary)
+    // Challenge — Baron Red (primary) — shares score card image + text
     ctx.fillStyle = '#E1625D';
     drawRoundedRect(btnX, btnY, btnW, btnH, 4);
     drawText('CHALLENGE A FRIEND', GW / 2, btnY + btnH / 2, 9, '#FFF');
     buttons.challenge = { x: btnX, y: btnY, w: btnW, h: btnH };
-
-    btnY += btnH + btnGap;
-
-    // Save — black outline (secondary)
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    drawRoundedRect(btnX, btnY, btnW, btnH, 4, true);
-    drawText('SHARE SCORE CARD', GW / 2, btnY + btnH / 2, 9, '#000');
-    buttons.save = { x: btnX, y: btnY, w: btnW, h: btnH };
 
     btnY += btnH + btnGap;
 
@@ -3570,22 +3560,14 @@ function renderLunchRushDeath() {
         }
     }
 
-    // Share button — Baron Red
+    // Challenge button — Baron Red, shares score card image + text
     const btnW = 200, btnH = 32;
     const btnX = GW / 2 - btnW / 2;
-    let btnY = 325;
+    let btnY = 335;
     ctx.fillStyle = '#E1625D';
     drawRoundedRect(btnX, btnY, btnW, btnH, 4);
     drawText('CHALLENGE A FRIEND', GW / 2, btnY + btnH / 2, 9, '#FFF');
     buttons.lunchRushShare = { x: btnX, y: btnY, w: btnW, h: btnH };
-
-    // Save Score Card button — outline
-    btnY += btnH + 10;
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    drawRoundedRect(btnX, btnY, btnW, btnH, 4, true);
-    drawText('SHARE SCORE CARD', GW / 2, btnY + btnH / 2, 7, '#000');
-    buttons.lunchRushSave = { x: btnX, y: btnY, w: btnW, h: btnH };
 
     // TAP TO TRY AGAIN
     const flash = Math.sin(frameCount * 0.08) * 0.3 + 0.7;
