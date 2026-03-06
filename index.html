@@ -816,7 +816,8 @@ function calculateCutScore(polyA, polyB, entry, exit, sandwichRotation) {
     const total = areaA + areaB;
     if (total < 1) return 0;
     const smaller = Math.min(areaA, areaB);
-    let rawScore = Math.min((smaller / total) * 2 * 100, 100);
+    const ratio = Math.min((smaller / total) * 2, 1); // 0-1, where 1 = perfect 50/50
+    let rawScore = Math.pow(ratio, 1.5) * 100; // steeper curve — near-misses cost more
 
     // Angle penalty: penalize cuts parallel to the sandwich's long axis
     const cutAngle = Math.atan2(exit.y - entry.y, exit.x - entry.x);
