@@ -2537,13 +2537,15 @@ function renderTitle() {
     drawTextOutline('SHORT', GW / 2, 100, 36, COLORS.csYellow, '#000');
     drawTextOutline('CUT', GW / 2, 146, 36, COLORS.csYellow, '#000');
 
-    // Large sandwich — no box, gentle bob animation
-    const bobY = Math.sin(frameCount * 0.03) * 4;
-    const sw = { x: 0, y: 0, w: 240, h: 96, rotation: 0, visible: true };
-    ctx.save();
-    ctx.translate(GW / 2, 240 + bobY);
-    drawSandwich(sw, ROUND_CONFIG[0].sandwichIdx);
-    ctx.restore();
+    // Large sandwich — no box, gentle bob animation (skip until sprite loaded)
+    if (hasSpriteFor(ROUND_CONFIG[0].sandwichIdx)) {
+        const bobY = Math.sin(frameCount * 0.03) * 4;
+        const sw = { x: 0, y: 0, w: 240, h: 96, rotation: 0, visible: true };
+        ctx.save();
+        ctx.translate(GW / 2, 240 + bobY);
+        drawSandwich(sw, ROUND_CONFIG[0].sandwichIdx);
+        ctx.restore();
+    }
 
     // Hook text
     drawText('CAN YOU CUT IT?', GW / 2, 310, 9, '#AAA');
