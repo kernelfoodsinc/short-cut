@@ -3470,23 +3470,23 @@ function renderLunchRushDeath() {
         drawSandwichProcedural(fakeSw, lunchRushKillingSandwich);
     }
     ctx.restore();
-    drawText(SANDWICHES[lunchRushKillingSandwich].name, GW / 2, 170, 7, '#555');
+    drawText(SANDWICHES[lunchRushKillingSandwich].name, GW / 2, 180, 7, '#555');
 
     // Killing score
     if (lunchRushScores.length > 0) {
         const killingScore = lunchRushScores[lunchRushScores.length - 1];
         if (killingScore === 0) {
-            drawText("TIME'S UP", GW / 2, 198, 8, COLORS.baronRed);
+            drawText("TIME'S UP", GW / 2, 208, 8, COLORS.baronRed);
         } else {
-            drawText('Final cut: ' + killingScore.toFixed(1) + '%', GW / 2, 198, 8, '#555');
+            drawText('Final cut: ' + killingScore.toFixed(1) + '%', GW / 2, 208, 8, '#555');
         }
     }
 
     // Best today
-    drawText('BEST TODAY: ' + lunchRushBestToday, GW / 2, 222, 9, '#000');
+    drawText('BEST TODAY: ' + lunchRushBestToday, GW / 2, 232, 9, '#000');
 
     // Near-miss motivator
-    let infoY = 242;
+    let infoY = 252;
     if (lunchRushBestToday > 0 && lunchRushStreak >= lunchRushBestToday - 1 && lunchRushStreak < lunchRushBestToday) {
         drawText('1 AWAY FROM YOUR BEST!', GW / 2, infoY, 7, COLORS.baronRed);
         infoY += 18;
