@@ -300,12 +300,15 @@ const SANDWICH_NAMES = SANDWICHES.map(s => s.name);
 const LUNCH_RUSH_THRESHOLD = 85;
 
 const ROUND_CONFIG = [
-    { sandwichIdx: 0, offsetX: 0, rotation: 0, timer: 5.0, drift: false },
-    { sandwichIdx: 1, offsetRange: [-70, 70], rotationRange: [5, 10], timer: 3.5, drift: false },
-    { sandwichIdx: 2, offsetRange: [-40, 40], rotationRange: [15, 20], timer: 3.0, drift: false },
+    { sandwichIdx: 0, offsetRange: [-15, 15], rotationRange: [3, 5], timer: 3.5, drift: true,
+      driftSpeed: 0.3, rotSpeed: 0 },
+    { sandwichIdx: 1, offsetRange: [-50, 50], rotationRange: [10, 15], timer: 3.0, drift: true,
+      driftSpeed: 0.4, rotSpeed: 0 },
+    { sandwichIdx: 2, offsetRange: [-40, 40], rotationRange: [15, 20], timer: 2.5, drift: true,
+      driftSpeed: 0.5, rotSpeed: 0.2 },
     { sandwichIdx: 3, offsetRange: [-20, 20], rotation: 0, timer: 2.0, drift: false },
-    { sandwichIdx: 4, offsetRange: [-15, 15], rotation: 0, timer: 1.8, drift: true,
-      driftSpeed: 0.7, rotSpeed: 0.4 }
+    { sandwichIdx: 4, offsetRange: [-15, 15], rotationRange: [3, 5], timer: 1.6, drift: true,
+      driftSpeed: 0.8, rotSpeed: 0.4 }
 ];
 
 // ============================================
@@ -820,8 +823,8 @@ function calculateCutScore(polyA, polyB, entry, exit, sandwichRotation) {
     const sandAngle = (sandwichRotation || 0) * Math.PI / 180;
     const angleDiff = cutAngle - sandAngle;
     const perp = Math.abs(Math.sin(angleDiff)); // 1 = perpendicular, 0 = parallel
-    const penalty = Math.pow(perp, 0.5); // gentle curve
-    rawScore *= (0.5 + 0.5 * penalty); // worst case 50% of raw score
+    const penalty = Math.pow(perp, 0.3); // steeper curve — sloppy angles cost more
+    rawScore *= (0.4 + 0.6 * penalty); // worst case 40% of raw score
 
     return Math.min(rawScore, 100);
 }
@@ -1497,8 +1500,8 @@ function setupRound() {
 
     // Drift
     if (config.drift) {
-        driftVX = (config.driftSpeed || 0.7) * (Math.random() < 0.5 ? 1 : -1);
-        driftVR = (config.rotSpeed || 0.4) * (Math.random() < 0.5 ? 1 : -1);
+        driftVX = (config.driftSpeed != null ? config.driftSpeed : 0.7) * (Math.random() < 0.5 ? 1 : -1);
+        driftVR = (config.rotSpeed != null ? config.rotSpeed : 0.4) * (Math.random() < 0.5 ? 1 : -1);
     } else {
         driftVX = 0;
         driftVR = 0;
